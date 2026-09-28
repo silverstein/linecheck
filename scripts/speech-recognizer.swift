@@ -1,4 +1,4 @@
-// Speech helper for Prompter, built on Apple's on-device Speech framework.
+// Speech helper for Linecheck, built on Apple's on-device Speech framework.
 //
 // LIVE mode (default): recognizes the microphone and streams JSON lines:
 //   {"text": "hi thanks for meeting", "final": false}
@@ -128,7 +128,7 @@ func prepareLanguageModel(scriptPath: String) -> Any? {
     let vocabURL = dir.appendingPathComponent("script-lm.vocab")
     let data = SFCustomLanguageModelData(
         locale: Locale(identifier: "en-US"),
-        identifier: "com.businessvacation.prompter.script",
+        identifier: "com.businessvacation.linecheck.script",
         version: "1.0"
     )
     for p in phrases {
@@ -375,7 +375,7 @@ if let path = recordPath {
         fail("record_open: \(error.localizedDescription)")
     }
 }
-let recordQueue = DispatchQueue(label: "prompter.record")
+let recordQueue = DispatchQueue(label: "linecheck.record")
 
 inputNode.installTap(onBus: 0, bufferSize: 1024, format: inputFormat) { buffer, _ in
     request.append(buffer)
@@ -437,7 +437,7 @@ final class SystemAudioWatcher: NSObject, SCStreamOutput, SCStreamDelegate {
             cfg.minimumFrameInterval = CMTime(value: 1, timescale: 1)
             let s = SCStream(filter: filter, configuration: cfg, delegate: self)
             do {
-                try s.addStreamOutput(self, type: .audio, sampleHandlerQueue: DispatchQueue(label: "prompter.sysaudio"))
+                try s.addStreamOutput(self, type: .audio, sampleHandlerQueue: DispatchQueue(label: "linecheck.sysaudio"))
                 s.startCapture { err in
                     if let err = err { fail("system_audio: \(err.localizedDescription)") }
                     else { emit(["event": "system_audio_ready"]) }

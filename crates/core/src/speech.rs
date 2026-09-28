@@ -1,6 +1,6 @@
 //! Speech recognition abstraction.
 //!
-//! Prompter aligns recognized speech to a *known* script, so the rest of the
+//! Linecheck aligns recognized speech to a *known* script, so the rest of the
 //! engine only needs a provider-agnostic stream of recognized text (plus
 //! optional word timings). Concrete providers -- Apple `SpeechAnalyzer` (macOS
 //! fast-path), a portable sherpa-onnx engine (cross-platform baseline), or a

@@ -3,7 +3,7 @@ name = "prompter-core"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Script parser, alignment engine, and compliance tracker for Prompter"
+description = "Script parser, alignment engine, and compliance tracker for Linecheck"
 
 [features]
 default = []

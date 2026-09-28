@@ -1,6 +1,6 @@
 name: Release macOS
 
-# Builds, signs (Developer ID), notarizes and staples Prompter.app, packages a
+# Builds, signs (Developer ID), notarizes and staples Linecheck.app, packages a
 # notarized DMG, signs the updater bundle, and publishes them with latest.json
 # (the in-app updater's feed) on the tag's GitHub release. Adapted from the
 # Minutes release workflow.
@@ -27,7 +27,7 @@ env:
 
 jobs:
   macos-release:
-    name: Build signed + notarized Prompter.app
+    name: Build signed + notarized Linecheck.app
     runs-on: macos-latest
     steps:
       - name: Validate release tag
@@ -113,8 +113,8 @@ jobs:
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
         run: |
           set -euo pipefail
-          keychain="$RUNNER_TEMP/prompter-release.keychain-db"
-          certificate="$RUNNER_TEMP/prompter-release.p12"
+          keychain="$RUNNER_TEMP/linecheck-release.keychain-db"
+          certificate="$RUNNER_TEMP/linecheck-release.p12"
           keychain_password="$(openssl rand -hex 24)"
           printf '%s' "$APPLE_CERTIFICATE" | base64 --decode > "$certificate"
           security create-keychain -p "$keychain_password" "$keychain"
@@ -126,7 +126,7 @@ jobs:
             -s -k "$keychain_password" "$keychain" >/dev/null
           security list-keychains -d user -s "$keychain"
           security find-identity -v -p codesigning "$keychain" | grep -Fq "$APPLE_SIGNING_IDENTITY"
-          echo "PROMPTER_RELEASE_KEYCHAIN=$keychain" >> "$GITHUB_ENV"
+          echo "LINECHECK_RELEASE_KEYCHAIN=$keychain" >> "$GITHUB_ENV"
 
       - name: Build app (Swift speech helper + Tauri bundle)
         env:
@@ -140,7 +140,7 @@ jobs:
           APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
         run: |
           set -euo pipefail
-          app="target/release/bundle/macos/Prompter.app"
+          app="target/release/bundle/macos/Linecheck.app"
           helper="$app/Contents/MacOS/speech-recognizer"
           file "$helper" | grep -q "Mach-O" || { echo "ERROR: speech helper missing from bundle" >&2; exit 1; }
 
@@ -154,7 +154,7 @@ jobs:
           # The hardened runtime silences the microphone without this.
           codesign -d --entitlements :- "$helper" 2>/dev/null | grep -q "com.apple.security.device.audio-input"
 
-          notary_zip="$RUNNER_TEMP/Prompter-notary.zip"
+          notary_zip="$RUNNER_TEMP/Linecheck-notary.zip"
           ditto -c -k --keepParent "$app" "$notary_zip"
           xcrun notarytool submit "$notary_zip" \
             --key "$APPLE_API_KEY_PATH" --key-id "$APPLE_API_KEY" --issuer "$APPLE_API_ISSUER" \
@@ -169,9 +169,9 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
           set -euo pipefail
-          updater="target/release/bundle/macos/Prompter.app.tar.gz"
+          updater="target/release/bundle/macos/Linecheck.app.tar.gz"
           rm -f "$updater" "$updater.sig"
-          tar -C target/release/bundle/macos -czf "$updater" Prompter.app
+          tar -C target/release/bundle/macos -czf "$updater" Linecheck.app
           cargo tauri signer sign "$updater"
           test -s "$updater.sig"
 
@@ -182,8 +182,8 @@ jobs:
           APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
         run: |
           set -euo pipefail
-          dmg="target/release/bundle/dmg/Prompter_${RELEASE_TAG#v}_aarch64.dmg"
-          ./scripts/make-dmg.sh target/release/bundle/macos/Prompter.app "$dmg"
+          dmg="target/release/bundle/dmg/Linecheck_${RELEASE_TAG#v}_aarch64.dmg"
+          ./scripts/make-dmg.sh target/release/bundle/macos/Linecheck.app "$dmg"
           codesign --force --timestamp --sign "$APPLE_SIGNING_IDENTITY" "$dmg"
           xcrun notarytool submit "$dmg" \
             --key "$APPLE_API_KEY_PATH" --key-id "$APPLE_API_KEY" --issuer "$APPLE_API_ISSUER" \
@@ -195,17 +195,17 @@ jobs:
       - name: Remove ephemeral signing material
         if: always()
         run: |
-          if [ -n "${PROMPTER_RELEASE_KEYCHAIN:-}" ]; then
-            security delete-keychain "$PROMPTER_RELEASE_KEYCHAIN" || true
+          if [ -n "${LINECHECK_RELEASE_KEYCHAIN:-}" ]; then
+            security delete-keychain "$LINECHECK_RELEASE_KEYCHAIN" || true
           fi
-          rm -f "${APPLE_API_KEY_PATH:-}" "$RUNNER_TEMP/prompter-release.p12" "$RUNNER_TEMP/Prompter-notary.zip"
+          rm -f "${APPLE_API_KEY_PATH:-}" "$RUNNER_TEMP/linecheck-release.p12" "$RUNNER_TEMP/Linecheck-notary.zip"
 
       - name: Ensure the GitHub release exists
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release view "$RELEASE_TAG" >/dev/null 2>&1 || \
-            gh release create "$RELEASE_TAG" --title "Prompter $RELEASE_TAG" --generate-notes --verify-tag
+            gh release create "$RELEASE_TAG" --title "Linecheck $RELEASE_TAG" --generate-notes --verify-tag
 
       - name: Generate latest.json for the in-app updater
         env:
@@ -213,8 +213,8 @@ jobs:
         run: |
           set -euo pipefail
           export UPDATE_VERSION="${RELEASE_TAG#v}"
-          export UPDATE_SIG="$(cat target/release/bundle/macos/Prompter.app.tar.gz.sig)"
-          export UPDATE_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/Prompter.app.tar.gz"
+          export UPDATE_SIG="$(cat target/release/bundle/macos/Linecheck.app.tar.gz.sig)"
+          export UPDATE_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/Linecheck.app.tar.gz"
           export UPDATE_NOTES="$(gh release view "$RELEASE_TAG" --json body -q .body 2>/dev/null || true)"
           python3 - <<'PY'
           import datetime, json, os
@@ -239,7 +239,7 @@ jobs:
         run: |
           gh release upload "$RELEASE_TAG" \
             target/release/bundle/dmg/*.dmg \
-            target/release/bundle/macos/Prompter.app.tar.gz \
-            target/release/bundle/macos/Prompter.app.tar.gz.sig \
+            target/release/bundle/macos/Linecheck.app.tar.gz \
+            target/release/bundle/macos/Linecheck.app.tar.gz.sig \
             target/release/bundle/macos/latest.json \
             --clobber

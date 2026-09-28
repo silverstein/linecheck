@@ -1,6 +1,6 @@
 {
   "identifier": "default",
-  "description": "Default capabilities for Prompter",
+  "description": "Default capabilities for Linecheck",
   "windows": ["main"],
   "permissions": [
     "core:default",

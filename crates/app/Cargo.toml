@@ -3,7 +3,7 @@ name = "prompter-app"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Prompter — live script guidance for high-stakes conversations"
+description = "Linecheck — a teleprompter for conversations"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

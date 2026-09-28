@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What is this
 
-Prompter is a macOS desktop teleprompter that tracks the speaker's voice against a known script. It scrolls intelligently, pauses when the other person speaks, supports conditional branching, and produces compliance reports with coaching insights after each session. Built for pharmacists doing MTM consultations; works for any structured conversation.
+Linecheck is a macOS desktop teleprompter that tracks the speaker's voice against a known script. It scrolls intelligently, pauses when the other person speaks, supports conditional branching, and produces compliance reports with coaching insights after each session. Built for pharmacists doing MTM consultations; works for any structured conversation.
 
 ## Build and run
 
@@ -61,23 +61,23 @@ Desktop shell. Converts core types to JSON-serializable structs for the frontend
 - `start_speech` / `stop_speech` — Spawn/stop the Swift speech helper
 - `set_tracking_position` / `choose_branch` — Manual re-anchoring (arrows, clicks, branch buttons)
 - `save_compliance` / `get_coaching` — Post-session reporting
-- `load_settings` / `save_settings` — Persist to `~/.prompter/settings.json`
+- `load_settings` / `save_settings` — Persist to `~/.linecheck/settings.json`
 - `list_available_scripts` — Watch `~/meetings/scripts/` directory
 - `set_always_on_top` / `set_hide_from_screen_share` — Window management (the latter synced with the tray item)
-- Deep link handling (`prompter://open?file=...` or `prompter://open?consultation_id=...`)
+- Deep link handling (`linecheck://open?file=...` or `linecheck://open?consultation_id=...`)
 
 Live speech comes from the Swift helper `scripts/speech-recognizer.swift` (Apple on-device Speech), bundled next to the app binary. Per session it gets `--script` (builds a custom language model from the script's spoken lines, macOS 14+), `--record` (16 kHz CAF for verification), and optionally `--system-audio` (ScreenCaptureKit call audio → `{"other": bool}`). After the session, `finish_tracking` writes the live report, then a background pass runs the helper in `--file` mode on the recording, re-aligns it (`realign.rs`), rewrites the report, deletes the audio (unless `keep_session_audio`), and emits `verification-complete`. Events: `speech`, `track-update`, `other-party`, `speech-status`, `speech-error` (fatal → timer fallback), `speech-warning` (non-fatal), `verification-complete` / `verification-failed`.
 
-The helper only has speech permission when launched by Prompter.app; running it from a terminal reports `speech_auth_not_determined`.
+The helper only has speech permission when launched by Linecheck.app; running it from a terminal reports `speech_auth_not_determined`.
 
 ### UI (`crates/app/ui/index.html`)
 Single-file vanilla JS/HTML/CSS. No framework, no build step. Communicates with Rust via `window.__TAURI__.core.invoke()` and `window.__TAURI__.event.listen()`.
 
 ## Key conventions
 
-- **No sibling repos**: Prompter builds on its own (it no longer depends on `minutes-core`).
-- **Diagnostics**: `open -n -W -a Prompter --args --transcribe-file <audio> --script <md> --out <json>` runs the post-session check on any recording (speech access belongs to the app, so it can't run from a shell). Each live run's recognizer stream is in `~/.prompter/recording.jsonl`; replay it with `cargo run -p prompter-core --example replay`.
+- **No sibling repos**: Linecheck builds on its own (it no longer depends on `minutes-core`).
+- **Diagnostics**: `open -n -W -a Linecheck --args --transcribe-file <audio> --script <md> --out <json>` runs the post-session check on any recording (speech access belongs to the app, so it can't run from a shell). Each live run's recognizer stream is in `~/.linecheck/recording.jsonl`; replay it with `cargo run -p prompter-core --example replay`.
 - **Content protection**: `contentProtected: true` in tauri.conf.json prevents screen capture of the window.
 - **Script format**: `.script.md` — annotated markdown with optional YAML frontmatter, `> PAUSE:` and `> BRANCH:` directives. See SPEC.md.
-- **File paths**: Scripts in `~/meetings/scripts/`, compliance reports in `~/meetings/consults/`, settings in `~/.prompter/settings.json`.
+- **File paths**: Scripts in `~/meetings/scripts/`, compliance reports in `~/meetings/consults/`, settings in `~/.linecheck/settings.json`.
 - **Test fixtures**: `crates/core/tests/fixtures/mtm-consultation.script.md` — real MTM consultation script used in integration tests.

@@ -1,13 +1,13 @@
-# Prompter
+# Linecheck: the teleprompter for conversations
 
-[![GitHub stars](https://img.shields.io/github/stars/silverstein/prompter?style=social)](https://github.com/silverstein/prompter)
-[![Latest release](https://img.shields.io/github/v/release/silverstein/prompter)](https://github.com/silverstein/prompter/releases/latest)
+[![GitHub stars](https://img.shields.io/github/stars/silverstein/linecheck?style=social)](https://github.com/silverstein/linecheck)
+[![Latest release](https://img.shields.io/github/v/release/silverstein/linecheck)](https://github.com/silverstein/linecheck/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![macOS 13+](https://img.shields.io/badge/macOS-13%2B-black?logo=apple)](#install)
 
 **A teleprompter for conversations, not monologues.**
 
-Prompter is a free, open-source macOS teleprompter for calls where you have to stay on script: consultations, sales calls, disclosures, onboarding, interviews. It listens to you on-device, keeps the line you're reading just under your camera, waits while the other person talks, follows the branch their answer sends you down, and afterwards tells you exactly which lines you delivered and which you skipped.
+Linecheck is a free, open-source macOS teleprompter for calls where you have to stay on script: consultations, sales calls, disclosures, onboarding, interviews. It listens to you on-device, keeps the line you're reading just under your camera, waits while the other person talks, follows the branch their answer sends you down, and afterwards tells you exactly which lines you delivered and which you skipped.
 
 It was built for pharmacists delivering Medication Therapy Management (MTM) consultations over video, where every required line has to be said and the patient keeps interrupting. It works for any structured conversation.
 
@@ -17,7 +17,7 @@ It was built for pharmacists delivering Medication Therapy Management (MTM) cons
 
 Most teleprompters assume you're reading a monologue to a camera. They scroll at a fixed speed, or follow your voice line by line. A real conversation breaks both: you skip ahead, go back to re-read, answer a question, and pick the script up again somewhere else.
 
-| | Fixed-speed teleprompters | Voice-follow teleprompters | Prompter |
+| | Fixed-speed teleprompters | Voice-follow teleprompters | Linecheck |
 |---|---|---|---|
 | Scrolling | Constant speed | Follows your voice | Follows your voice, word by word, through skips and re-reads |
 | When the other person talks | Keeps scrolling | Pauses on silence | Waits at check-in points; can detect the other side of a call |
@@ -28,9 +28,9 @@ Most teleprompters assume you're reading a monologue to a camera. They scroll at
 
 ## Install
 
-Download the latest build from [Releases](https://github.com/silverstein/prompter/releases/latest), unzip it, and move `Prompter.app` to Applications. It needs macOS 13 or later on Apple silicon (the per-script language model needs macOS 14).
+Download the latest build from [Releases](https://github.com/silverstein/linecheck/releases/latest). It needs macOS 13 or later on Apple silicon (the per-script language model needs macOS 14).
 
-v0.2.0 is ad-hoc signed, not notarized, so macOS blocks the first launch: right-click the app and choose **Open**, or run `xattr -dr com.apple.quarantine /Applications/Prompter.app`. Later releases ship as a signed, notarized DMG and update themselves.
+v0.2.0 was released under the app's earlier name, Prompter. Unzip it and move `Prompter.app` to Applications. It's ad-hoc signed, not notarized, so macOS blocks the first launch: right-click the app and choose **Open**, or run `xattr -dr com.apple.quarantine /Applications/Prompter.app`. Later releases ship as a signed, notarized Linecheck DMG and update themselves.
 
 Allow microphone and speech recognition access when the first session starts. No account, no API keys.
 
@@ -38,7 +38,7 @@ Allow microphone and speech recognition access when the first session starts. No
 
 1. Load a script: open a file, paste from the clipboard, or drag one in.
 2. Put the reading line just under your camera (`[` `]`) and set the column width (`,` `.`).
-3. Press **Start Session** (or Space) and start talking. Prompter holds the line you're reading at the reading line.
+3. Press **Start Session** (or Space) and start talking. Linecheck holds the line you're reading at the reading line.
 4. It waits at `PAUSE` points. At `BRANCH` points it follows whichever answer you start reading, or you can click one.
 5. Click **End**. You get a compliance report and coaching notes, re-checked against the full recording.
 
@@ -82,7 +82,7 @@ Directives render as blockquotes, so a script still reads cleanly on GitHub or i
 
 ## After a session
 
-Prompter writes a Markdown report to `~/meetings/consults/`:
+Linecheck writes a Markdown report to `~/meetings/consults/`:
 
 - Sections covered and skipped, and time per section
 - Pause points reached and branch decisions taken
@@ -90,7 +90,7 @@ Prompter writes a Markdown report to `~/meetings/consults/`:
 - Lines not delivered, restarts, and off-script stretches
 - Coaching insights on pacing, coverage, pause discipline, and section balance (computed from the session data, no LLM)
 
-Live tracking can miss things, so after you end the session Prompter re-transcribes the whole recording, aligns it against the script again, and rewrites the report from that pass.
+Live tracking can miss things, so after you end the session Linecheck re-transcribes the whole recording, aligns it against the script again, and rewrites the report from that pass.
 
 ## How the tracking works
 
@@ -133,7 +133,7 @@ cargo test
 ```
 
 ```
-prompter/
+linecheck/
 ├── crates/
 │   ├── core/                    # Rust library: pure logic, no audio
 │   │   ├── script.rs            # .script.md parser
@@ -153,19 +153,21 @@ prompter/
 └── INTEGRATION.md               # Integration guide for script sources
 ```
 
-## Sending scripts to Prompter
+## Sending scripts to Linecheck
 
-Other tools can hand scripts to Prompter three ways:
+Other tools can hand scripts to Linecheck three ways:
 
-- **Watched folder:** scripts saved to `~/meetings/scripts/` appear in Prompter's list.
-- **URL scheme:** `prompter://open?file=/path/to/script.script.md`, or `prompter://open?consultation_id=abc-123` to open the matching script from the watched folder or `~/Downloads`.
-- **Clipboard:** copy Markdown anywhere, then Cmd+V in Prompter.
+- **Watched folder:** scripts saved to `~/meetings/scripts/` appear in Linecheck's list.
+- **URL scheme:** `linecheck://open?file=/path/to/script.script.md`, or `linecheck://open?consultation_id=abc-123` to open the matching script from the watched folder or `~/Downloads`.
+- **Clipboard:** copy Markdown anywhere, then Cmd+V in Linecheck.
 
 See [INTEGRATION.md](INTEGRATION.md).
 
 ## Related
 
-Prompter shares the `~/meetings/` folder convention with [Minutes](https://github.com/silverstein/minutes), an open-source, local-first conversation memory for Claude Code, Codex, and other MCP clients.
+Linecheck shares the `~/meetings/` folder convention with [Minutes](https://github.com/silverstein/minutes), an open-source, local-first conversation memory for Claude Code, Codex, and other MCP clients.
+
+Linecheck was called Prompter until September 2026; `prompter://` links still work.
 
 Built by [Mat Silverstein](https://github.com/silverstein).
 

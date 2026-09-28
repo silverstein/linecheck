@@ -1,5 +1,5 @@
 #!/bin/bash
-# Build Prompter: speech recognizer + Tauri app bundle + optional install
+# Build Linecheck: speech recognizer + Tauri app bundle + optional install
 set -e
 
 export MACOSX_DEPLOYMENT_TARGET="13.0"
@@ -20,7 +20,7 @@ cd crates/app
 cargo tauri build --bundles app
 cd ../..
 
-APP=target/release/bundle/macos/Prompter.app
+APP=target/release/bundle/macos/Linecheck.app
 # With a signing identity (APPLE_SIGNING_IDENTITY) Tauri signs the bundle and
 # the helper. Without one, sign ad hoc so the bundle is still valid.
 if ! codesign --verify --deep --strict "$APP" 2>/dev/null; then
@@ -31,15 +31,16 @@ fi
 codesign --verify --deep --strict "$APP"
 
 echo "=== Build complete ==="
-echo "  App: target/release/bundle/macos/Prompter.app"
+echo "  App: target/release/bundle/macos/Linecheck.app"
 
 if [ "$1" = "--install" ]; then
     echo "=== Installing to /Applications ==="
     pkill -9 -f "prompter-app" 2>/dev/null || true
-    pkill -9 -f "Prompter" 2>/dev/null || true
+    pkill -9 -f "Linecheck" 2>/dev/null || true
+    pkill -9 -f "Prompter" 2>/dev/null || true  # pre-rename build
     sleep 2
-    rm -rf /Applications/Prompter.app
-    cp -R target/release/bundle/macos/Prompter.app /Applications/Prompter.app
-    echo "  Installed to /Applications/Prompter.app"
-    echo "  Binary: $(stat -f '%Sm' /Applications/Prompter.app/Contents/MacOS/prompter-app)"
+    rm -rf /Applications/Linecheck.app /Applications/Prompter.app
+    cp -R target/release/bundle/macos/Linecheck.app /Applications/Linecheck.app
+    echo "  Installed to /Applications/Linecheck.app"
+    echo "  Binary: $(stat -f '%Sm' /Applications/Linecheck.app/Contents/MacOS/prompter-app)"
 fi

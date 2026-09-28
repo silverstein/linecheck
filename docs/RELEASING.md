@@ -1,4 +1,4 @@
-# Releasing Prompter
+# Releasing Linecheck
 
 Pushing a `v*` tag runs `.github/workflows/release-macos.yml`, which:
 
@@ -6,13 +6,13 @@ Pushing a `v*` tag runs `.github/workflows/release-macos.yml`, which:
 2. Signs both with the Developer ID (helper first, then the app) using the hardened runtime and `crates/app/Entitlements.plist`.
 3. Notarizes and staples the app.
 4. Packages a DMG, then signs, notarizes and staples it.
-5. Signs the updater bundle (`Prompter.app.tar.gz`) with the Prompter updater key.
+5. Signs the updater bundle (`Linecheck.app.tar.gz`) with the Linecheck updater key.
 6. Uploads the DMG, the updater bundle, its signature and `latest.json` (the in-app updater's feed) to the tag's GitHub release, creating the release if it doesn't exist.
 
 ## Cutting a release
 
 1. Bump the version in `Cargo.toml` (`[workspace.package]`) and `crates/app/tauri.conf.json`. The workflow refuses a tag that doesn't match both.
-2. Commit, then tag and push: `git tag -a v0.2.1 -m "Prompter v0.2.1" && git push origin master v0.2.1`.
+2. Commit, then tag and push: `git tag -a v0.2.1 -m "Linecheck v0.2.1" && git push origin master v0.2.1`.
 3. Optionally create the GitHub release with notes first. Otherwise the workflow creates one with generated notes, which you can edit afterwards. The release body becomes the update notes in `latest.json`.
 
 To rebuild an existing tag, run the workflow manually (Actions, then Release macOS, then Run workflow) with the tag.
@@ -29,7 +29,7 @@ Repository secrets (Settings, then Secrets and variables, then Actions):
 | `APPLE_API_ISSUER` | App Store Connect API issuer ID (notarization) |
 | `APPLE_API_KEY` | App Store Connect API key ID |
 | `APPLE_API_PRIVATE_KEY` | Contents of the `AuthKey_<id>.p8` file |
-| `TAURI_SIGNING_PRIVATE_KEY` | Prompter updater private key |
+| `TAURI_SIGNING_PRIVATE_KEY` | Linecheck updater private key |
 | `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | Its password |
 
 The Apple values are the same ones the Minutes release uses.

@@ -1,7 +1,7 @@
 //! Offline replay of a recorded ASR stream through the `ScriptTracker`.
 //!
 //! The app records the raw recognizer stream (script + every `{text, final}`
-//! event) to `~/.prompter/recording.jsonl` during a session. Replaying it here
+//! event) to `~/.linecheck/recording.jsonl` during a session. Replaying it here
 //! drives the exact same tracking logic without a live read, so the matcher can
 //! be tuned by watching where the cursor freezes / jumps / lags -- with the
 //! human out of the loop.
@@ -9,7 +9,7 @@
 //! Usage:
 //!   cargo run -p prompter-core --example replay -- [recording.jsonl] [window] [tail]
 //!
-//! Defaults: ~/.prompter/recording.jsonl, window 10, tail 10. Sweep `window`
+//! Defaults: ~/.linecheck/recording.jsonl, window 10, tail 10. Sweep `window`
 //! against the SAME recording to compare settings.
 
 use prompter_core::{recent_words, script, ScriptTracker, SessionRecorder, SpeechUpdate};
@@ -19,7 +19,7 @@ fn main() {
     let mut args = std::env::args().skip(1);
     let path = args.next().unwrap_or_else(|| {
         let home = std::env::var("HOME").unwrap_or_default();
-        format!("{home}/.prompter/recording.jsonl")
+        format!("{home}/.linecheck/recording.jsonl")
     });
     let window: usize = args.next().and_then(|s| s.parse().ok()).unwrap_or(10);
     let tail: usize = args.next().and_then(|s| s.parse().ok()).unwrap_or(10);

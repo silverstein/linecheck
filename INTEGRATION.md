@@ -1,10 +1,10 @@
-# Integrating with Prompter
+# Integrating with Linecheck
 
-Any app or workflow that produces scripts can hand them to Prompter.
+Any app or workflow that produces scripts can hand them to Linecheck.
 
 ## Watched folder
 
-Prompter picks up scripts from **`~/meetings/scripts/`**. Any `.md` file placed there appears automatically in Prompter's "Recent & Available Scripts" list on launch.
+Linecheck picks up scripts from **`~/meetings/scripts/`**. Any `.md` file placed there appears automatically in Linecheck's "Recent & Available Scripts" list on launch.
 
 ### Export format
 
@@ -60,7 +60,7 @@ Do you have any questions?
 
 ### Frontmatter is optional
 
-Plain text without `---` frontmatter works too. Prompter will derive a title from the first line and treat the whole text as a single section. But frontmatter gives you variables, compliance tracking, and script versioning.
+Plain text without `---` frontmatter works too. Linecheck will derive a title from the first line and treat the whole text as a single section. But frontmatter gives you variables, compliance tracking, and script versioning.
 
 ### Where to save
 
@@ -70,13 +70,13 @@ Plain text without `---` frontmatter works too. Prompter will derive a title fro
 
 Example: `~/meetings/scripts/2026-03-20-jane-smith-mtm.script.md`
 
-Prompter lists all `.md` files in this directory, sorted by modification time (newest first).
+Linecheck lists all `.md` files in this directory, sorted by modification time (newest first).
 
 ### Alternative: Clipboard
 
-Users can also Cmd+V in Prompter to paste a script from their clipboard. A script source can offer a "Copy Script" button that copies the formatted markdown.
+Users can also Cmd+V in Linecheck to paste a script from their clipboard. A script source can offer a "Copy Script" button that copies the formatted markdown.
 
 ### URL scheme
 
-- `prompter://open?file=/path/to/script.md` opens Prompter with that script loaded.
-- `prompter://open?consultation_id=abc-123` opens the most recently modified script in `~/meetings/scripts/` or `~/Downloads` whose filename contains the id, or whose frontmatter has `consultation_id: abc-123`.
+- `linecheck://open?file=/path/to/script.md` opens Linecheck with that script loaded.
+- `linecheck://open?consultation_id=abc-123` opens the most recently modified script in `~/meetings/scripts/` or `~/Downloads` whose filename contains the id, or whose frontmatter has `consultation_id: abc-123`.

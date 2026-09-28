@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate Prompter app icon — clean teleprompter motif."""
+"""Generate Linecheck app icon — clean teleprompter motif."""
 import struct, zlib, math, os
 
 def create_png(w, h, pixels):

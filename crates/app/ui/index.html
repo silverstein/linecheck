@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Prompter</title>
+<title>Linecheck</title>
 <link rel="stylesheet" href="style.css">
 <style>/* empty */</style>
 </head>
@@ -110,7 +110,7 @@
       <tr><td>H</td><td>This help</td></tr>
     </table>
     <h3 style="margin-top:22px">Session options</h3>
-    <label class="opt"><input type="checkbox" id="optHidden"> Hide Prompter from screenshots, recordings and screen sharing (Zoom, Meet) <span class="opt-note">On by default; also in the menu-bar icon</span></label>
+    <label class="opt"><input type="checkbox" id="optHidden"> Hide Linecheck from screenshots, recordings and screen sharing (Zoom, Meet) <span class="opt-note">On by default; also in the menu-bar icon</span></label>
     <label class="opt"><input type="checkbox" id="optVerify"> Double-check coverage against the full recording after each session <span class="opt-note">Audio is deleted once checked</span></label>
     <label class="opt"><input type="checkbox" id="optKeepAudio"> Keep session audio <span class="opt-note">Off by default: consult audio is patient data</span></label>
     <label class="opt"><input type="checkbox" id="optOther"> Detect when the patient is talking on a call <span class="opt-note">Uses call audio; needs Screen &amp; System Audio Recording permission</span></label>
@@ -119,7 +119,7 @@
 
 <script>
 // ═══════════════════════════════════════════════════════════
-//  Prompter — teleprompter engine
+//  Linecheck — teleprompter engine
 //  All DOM mutations use safe createElement / textContent.
 //  Script data is first-party from our own Rust parser via Tauri IPC.
 // ═══════════════════════════════════════════════════════════
@@ -207,7 +207,7 @@ document.addEventListener('DOMContentLoaded', ()=>{
   // Restore settings + load recents
   restoreSettings();
   loadRecents();
-  // Listen for deep link opens (prompter://open?file=... or ?consultation_id=...)
+  // Listen for deep link opens (linecheck://open?file=... or ?consultation_id=...)
   listen('deep-link-open', async (event)=>{
     try{
       const d = await invoke('load_script',{path:event.payload});
@@ -1130,9 +1130,9 @@ async function bindSessionOptions(){
 bindSessionOptions();
 
 // Updates: offered only outside a session (the bar is hidden in focus mode and
-// Rust refuses to install mid-session); installing restarts Prompter.
+// Rust refuses to install mid-session); installing restarts Linecheck.
 listen('update-available', e=>{
-  $('updateText').textContent = 'Prompter ' + e.payload.version + ' is available.';
+  $('updateText').textContent = 'Linecheck ' + e.payload.version + ' is available.';
   $('updateBar').classList.add('show');
 });
 $('updateBtn').addEventListener('click', async ()=>{

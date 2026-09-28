@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/nicehash/tauri/dev/crates/tauri-utils/schema.json",
-  "productName": "Prompter",
-  "identifier": "com.businessvacation.prompter",
+  "productName": "Linecheck",
+  "identifier": "com.businessvacation.linecheck",
   "version": "0.2.0",
   "build": {
     "frontendDist": "./ui"
@@ -20,7 +20,7 @@
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "Prompter",
+        "title": "Linecheck",
         "width": 800,
         "height": 900,
         "minWidth": 600,
@@ -41,13 +41,13 @@
     "deep-link": {
       "mobile": [],
       "desktop": {
-        "schemes": ["prompter"]
+        "schemes": ["linecheck", "prompter"]
       }
     },
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDlFMkMwMEE5MjJDNTk1RjAKUldUd2xjVWlxUUFzbmdXZitxK0dVSnZqQnZOdzZlZzVMS0lQYjArdkxRQTJFUUVFYnI1SXZlS0wK",
       "endpoints": [
-        "https://github.com/silverstein/prompter/releases/latest/download/latest.json"
+        "https://github.com/silverstein/linecheck/releases/latest/download/latest.json"
       ]
     }
   }

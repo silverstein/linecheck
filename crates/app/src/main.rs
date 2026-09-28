@@ -151,14 +151,25 @@ fn speech_helper_path() -> std::path::PathBuf {
         .join("speech-recognizer")
 }
 
-/// Create a private per-session folder under ~/.prompter/sessions.
+/// The app's data folder, `~/.linecheck`. On first use it moves a pre-rename
+/// `~/.prompter` folder over, so settings and logs carry across the rename.
+fn data_dir() -> std::path::PathBuf {
+    let home = dirs_next::home_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
+    let dir = home.join(".linecheck");
+    let legacy = home.join(".prompter");
+    if !dir.exists() && legacy.is_dir() {
+        let _ = fs::rename(&legacy, &dir);
+    }
+    dir
+}
+
+/// Create a private per-session folder under ~/.linecheck/sessions.
 fn new_session_dir() -> Option<std::path::PathBuf> {
-    let home = dirs_next::home_dir()?;
     let stamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .ok()?
         .as_millis();
-    let dir = home.join(".prompter").join("sessions").join(stamp.to_string());
+    let dir = data_dir().join("sessions").join(stamp.to_string());
     fs::create_dir_all(&dir).ok()?;
     #[cfg(unix)]
     {
@@ -259,8 +270,7 @@ fn track_event(u: &TrackUpdate) -> TrackEvent {
 
 /// Path of the rolling ASR recording (for offline replay/eval).
 fn recording_path() -> std::path::PathBuf {
-    let home = dirs_next::home_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
-    home.join(".prompter").join("recording.jsonl")
+    data_dir().join("recording.jsonl")
 }
 
 /// Start a tracking session for `text` (the .script.md source).
@@ -508,7 +518,7 @@ fn finish_tracking(
                         );
                     }
                     Err(e) => {
-                        eprintln!("[prompter] verification failed: {e}");
+                        eprintln!("[linecheck] verification failed: {e}");
                         let _ = app.emit("verification-failed", e);
                     }
                 }
@@ -526,13 +536,12 @@ fn finish_tracking(
 /// The post-session pass: re-transcribe the whole recording (on-device, biased
 /// toward the script), align it against the script, and rewrite the report
 /// with recording-verified coverage, speaking pace, and off-script words.
-/// Append one line per verification pass to `~/.prompter/verification.log`
+/// Append one line per verification pass to `~/.linecheck/verification.log`
 /// (outcome and timing only, never transcript text), so a failure the user
 /// dismissed can still be diagnosed.
 fn log_verification(duration_secs: u64, took_secs: f32, result: &Result<prompter_core::ComplianceReport, String>) {
     use std::io::Write;
-    let Some(home) = dirs_next::home_dir() else { return };
-    let path = home.join(".prompter").join("verification.log");
+    let path = data_dir().join("verification.log");
     let outcome = match result {
         Ok(_) => "ok".to_string(),
         Err(e) => format!("failed: {e}"),
@@ -665,7 +674,7 @@ fn start_speech(app: tauri::AppHandle) -> Result<String, String> {
         use std::io::BufRead;
 
         eprintln!(
-            "[prompter] Starting speech recognizer: {} {:?}",
+            "[linecheck] Starting speech recognizer: {} {:?}",
             recognizer_path.display(),
             args
         );
@@ -678,7 +687,7 @@ fn start_speech(app: tauri::AppHandle) -> Result<String, String> {
         {
             Ok(c) => c,
             Err(e) => {
-                eprintln!("[prompter] Failed to spawn speech recognizer: {}", e);
+                eprintln!("[linecheck] Failed to spawn speech recognizer: {}", e);
                 let _ = app.emit("speech-error", format!("{}", e));
                 AUDIO_RUNNING.store(false, Ordering::Relaxed);
                 return;
@@ -692,7 +701,7 @@ fn start_speech(app: tauri::AppHandle) -> Result<String, String> {
             let app_err = app.clone();
             std::thread::spawn(move || {
                 for line in std::io::BufReader::new(stderr).lines().map_while(Result::ok) {
-                    eprintln!("[prompter] helper: {line}");
+                    eprintln!("[linecheck] helper: {line}");
                     let Ok(v) = serde_json::from_str::<serde_json::Value>(&line) else {
                         continue;
                     };
@@ -701,7 +710,7 @@ fn start_speech(app: tauri::AppHandle) -> Result<String, String> {
                     };
                     let user_msg = match err {
                         e if e.starts_with("speech_auth") => Some(
-                            "Speech recognition permission is off. Turn it on for Prompter in System Settings > Privacy & Security > Speech Recognition.".to_string(),
+                            "Speech recognition permission is off. Turn it on for Linecheck in System Settings > Privacy & Security > Speech Recognition.".to_string(),
                         ),
                         "recognizer_unavailable" => {
                             Some("On-device speech recognition isn't available on this Mac.".to_string())
@@ -713,7 +722,7 @@ fn start_speech(app: tauri::AppHandle) -> Result<String, String> {
                             "Call-audio detection stopped ({e}). Tracking continues without it."
                         )),
                         "screen_capture_denied" => Some(
-                            "Call-audio detection needs Screen & System Audio Recording permission for Prompter. Tracking continues without it.".to_string(),
+                            "Call-audio detection needs Screen & System Audio Recording permission for Linecheck. Tracking continues without it.".to_string(),
                         ),
                         _ => None,
                     };
@@ -745,7 +754,7 @@ fn start_speech(app: tauri::AppHandle) -> Result<String, String> {
 
             // Status events from the helper (language model, call audio).
             if let Some(ev) = val.get("event").and_then(|e| e.as_str()) {
-                eprintln!("[prompter] helper event: {line}");
+                eprintln!("[linecheck] helper event: {line}");
                 let _ = app.emit("speech-status", ev.to_string());
                 continue;
             }
@@ -770,7 +779,7 @@ fn start_speech(app: tauri::AppHandle) -> Result<String, String> {
             };
             let is_final = val.get("final").and_then(|f| f.as_bool()).unwrap_or(false);
             let preview: String = text.chars().take(100).collect();
-            eprintln!("[prompter] Speech: {preview}");
+            eprintln!("[linecheck] Speech: {preview}");
 
             #[derive(Clone, Serialize)]
             struct SpeechEvent {
@@ -853,7 +862,7 @@ fn start_speech(app: tauri::AppHandle) -> Result<String, String> {
         SPEECH_PID.store(0, Ordering::SeqCst);
         OTHER_SPEAKING.store(false, Ordering::SeqCst);
         AUDIO_RUNNING.store(false, Ordering::Relaxed);
-        eprintln!("[prompter] Speech recognizer stopped");
+        eprintln!("[linecheck] Speech recognizer stopped");
     });
 
     Ok("started".into())
@@ -912,11 +921,10 @@ fn save_compliance(report: SessionReport) -> Result<String, String> {
     Ok(path.to_string_lossy().to_string())
 }
 
-// ── Settings persistence (~/.prompter/settings.json) ──
+// ── Settings persistence (~/.linecheck/settings.json) ──
 
 fn settings_path() -> std::path::PathBuf {
-    let home = dirs_next::home_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
-    home.join(".prompter").join("settings.json")
+    data_dir().join("settings.json")
 }
 
 #[derive(Debug, Serialize, serde::Deserialize)]
@@ -1145,7 +1153,7 @@ struct CoachingInsight {
 /// Find a script file by consultation_id.
 ///
 /// Searches the watched scripts folder AND `~/Downloads`. The id-based deep
-/// link (a script source's "Open in Prompter" button) carries only the consultation id, so we
+/// link (a script source's "Open in Linecheck" button) carries only the consultation id, so we
 /// resolve it to a local file by matching the filename or the frontmatter
 /// `consultation_id`. A browser "Download" export lands the `.script.md` in
 /// `~/Downloads` (browser default), so without the Downloads fallback a
@@ -1204,11 +1212,15 @@ fn find_script_by_consultation_id(consultation_id: &str) -> Option<String> {
 }
 
 /// Parse a deep link URL and extract parameters.
-/// Supports: prompter://open?file=/path/to/script.md
-///           prompter://open?consultation_id=abc-123
+/// Supports: linecheck://open?file=/path/to/script.md
+///           linecheck://open?consultation_id=abc-123
+/// The pre-rename `prompter://` scheme is still accepted.
 fn parse_deep_link(url: &str) -> Option<(String, String)> {
     // Strip the scheme
-    let rest = url.strip_prefix("prompter://").unwrap_or(url);
+    let rest = url
+        .strip_prefix("linecheck://")
+        .or_else(|| url.strip_prefix("prompter://"))
+        .unwrap_or(url);
     let rest = rest.strip_prefix("open").unwrap_or(rest);
     let rest = rest.strip_prefix('?').unwrap_or(rest);
 
@@ -1281,7 +1293,7 @@ fn screen_share_label(hidden: bool) -> &'static str {
 
 // ── Updates ──
 // Checked once at launch against the release feed (latest.json, signed with
-// the Prompter updater key). The UI offers the update outside sessions only;
+// the Linecheck updater key). The UI offers the update outside sessions only;
 // installing restarts the app, so it's refused mid-session or mid-check.
 
 #[derive(Clone, Serialize)]
@@ -1305,7 +1317,7 @@ fn check_for_update(app: tauri::AppHandle) {
                 );
             }
             Ok(None) => {}
-            Err(e) => eprintln!("[prompter] update check failed: {e}"),
+            Err(e) => eprintln!("[linecheck] update check failed: {e}"),
         }
     });
 }
@@ -1329,7 +1341,7 @@ async fn install_update(
         .check()
         .await
         .map_err(|e| e.to_string())?
-        .ok_or("Prompter is up to date.")?;
+        .ok_or("Linecheck is up to date.")?;
     update
         .download_and_install(|_, _| {}, || {})
         .await
@@ -1337,11 +1349,11 @@ async fn install_update(
     app.restart();
 }
 
-/// Diagnostic mode: `Prompter --transcribe-file <audio> --script <md> --out <json>`
+/// Diagnostic mode: `Linecheck --transcribe-file <audio> --script <md> --out <json>`
 /// runs the speech helper's file mode (the post-session check) and writes its
 /// output, without opening a window. It has to go through the app because
-/// macOS grants speech recognition to Prompter.app, not to a shell; launch it
-/// with `open -n -W -a Prompter --args ...`. Lets the check be reproduced on
+/// macOS grants speech recognition to Linecheck.app, not to a shell; launch it
+/// with `open -n -W -a Linecheck --args ...`. Lets the check be reproduced on
 /// a kept recording or synthetic audio.
 fn transcribe_file_mode() -> Option<i32> {
     let args: Vec<String> = std::env::args().collect();
@@ -1413,14 +1425,14 @@ fn main() {
                     None::<&str>,
                 )?;
                 let quit =
-                    MenuItem::with_id(app, "tray_quit", "Quit Prompter", true, None::<&str>)?;
+                    MenuItem::with_id(app, "tray_quit", "Quit Linecheck", true, None::<&str>)?;
                 let menu = Menu::with_items(app, &[&screen_item, &quit])?;
 
                 if let Ok(mut slot) = app.state::<ScreenShareItem>().0.lock() {
                     *slot = Some(screen_item.clone());
                 }
 
-                let mut tray = TrayIconBuilder::with_id("prompter-tray")
+                let mut tray = TrayIconBuilder::with_id("linecheck-tray")
                     .menu(&menu)
                     .on_menu_event(move |app, event| match event.id().as_ref() {
                         "screen-share-toggle" => {
@@ -1435,7 +1447,7 @@ fn main() {
                 }
                 let _ = tray.build(app);
             }
-            // Handle deep links (prompter://open?file=... or prompter://open?consultation_id=...)
+            // Handle deep links (linecheck://open?file=... or linecheck://open?consultation_id=...)
             let handle = app.handle().clone();
             app.handle().listen("deep-link://new-url", move |event| {
                 let payload = event.payload();
@@ -1485,5 +1497,5 @@ fn main() {
             list_available_scripts
         ])
         .run(tauri::generate_context!())
-        .expect("error while running Prompter");
+        .expect("error while running Linecheck");
 }
