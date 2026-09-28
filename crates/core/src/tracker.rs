@@ -808,7 +808,12 @@ impl ScriptTracker {
         scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
         let (best_i, best_s) = scored[0];
         let second_s = scored.get(1).map(|x| x.1).unwrap_or(0.0);
-        if best_s >= align::MATCH_THRESHOLD && best_s - second_s >= BRANCH_MARGIN {
+        // The question is usually read aloud too, and whole-text similarity is
+        // loose: a question that shares a few words with one answer would pick
+        // it before anyone has answered. Words that fit the question at least
+        // as well as the best option are the question, not an answer.
+        let question_s = align::similarity(text, &self.branches[branch].question);
+        if best_s >= align::MATCH_THRESHOLD && best_s - second_s >= BRANCH_MARGIN && best_s > question_s {
             Some(best_i)
         } else {
             None
@@ -1072,6 +1077,39 @@ mod tests {
         let back = t.observe(&SpeechUpdate::partial("does this make sense so far for you"));
         assert_eq!(back.state, TrackState::Speaking, "left the branch on a partial");
         assert_eq!(t.position(), 3);
+    }
+
+    #[test]
+    fn reading_the_question_aloud_does_not_pick_an_answer() {
+        // The question shares words ("send", "to") with the YES answer. Reading
+        // it aloud must leave the choice open; the answer read next decides.
+        let script = script_from(vec![Section {
+            name: "Body".into(),
+            word_count: 0,
+            elements: vec![
+                Element::Text(vec![sent("muscle aches that dont go away are worth a call to us")]),
+                Element::Directive(Directive::Branch {
+                    question: "Would you like me to send these notes to Dr. Patel?".into(),
+                    options: vec![
+                        BranchOption {
+                            label: "YES".into(),
+                            sentences: vec![sent("Great, I'll send them over this afternoon.")],
+                        },
+                        BranchOption {
+                            label: "NO".into(),
+                            sentences: vec![sent("No problem, I'll print you a copy instead.")],
+                        },
+                    ],
+                }),
+            ],
+        }]);
+        let mut t = ScriptTracker::new(&script);
+        t.observe(&SpeechUpdate::finalized("muscle aches that dont go away are worth a call to us"));
+        let q = t.observe(&SpeechUpdate::finalized("you like me to send these notes to Dr Patel"));
+        assert!(q.branch_choice.is_none(), "the question alone picked {:?}", q.branch_choice);
+        assert!(matches!(q.state, TrackState::AtBranch { .. }));
+        let a = t.observe(&SpeechUpdate::partial("no problem I'll print you a copy"));
+        assert_eq!(a.branch_choice.map(|c| c.option_label).as_deref(), Some("NO"));
     }
 
     #[test]
