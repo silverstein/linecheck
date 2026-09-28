@@ -7,7 +7,7 @@
 //! earlier sentence "covered"; here a main sentence counts as covered only when
 //! a committed match actually landed on it. Also captures the branch path taken,
 //! which pause points were reached, and the recognized transcript (which the
-//! prior pipeline never persisted). See `docs/UPGRADE-2026.md`, D6.
+//! prior pipeline never persisted).
 
 use crate::compliance::{ComplianceReport, DeliveryStats};
 use crate::realign::Realignment;
@@ -96,7 +96,7 @@ impl SessionRecorder {
                     // Count only pauses the tracker can actually reach (those
                     // immediately after a main sentence), so reached/total is an
                     // honest ratio. Consecutive or branch-adjacent pauses are a
-                    // known limitation (see docs/UPGRADE-2026.md).
+                    // known limitation.
                     Element::Directive(Directive::Pause { .. }) => {
                         if prev_was_main {
                             pause_total += 1;

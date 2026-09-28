@@ -13,7 +13,7 @@
 //!   floor if the model call fails.
 //!
 //! Standard MTM required-element sets are provided ([`obra_counseling_checklist`],
-//! [`cmr_checklist`]). See `docs/UPGRADE-2026.md`, D6.
+//! [`cmr_checklist`]).
 
 use crate::session::TranscriptLine;
 

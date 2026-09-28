@@ -5,7 +5,7 @@
 //! optional word timings). Concrete providers -- Apple `SpeechAnalyzer` (macOS
 //! fast-path), a portable sherpa-onnx engine (cross-platform baseline), or a
 //! BAA-gated cloud API -- implement [`SpeechProvider`]; the tracker and UI never
-//! see provider details. See `docs/UPGRADE-2026.md` (decisions D1, D4).
+//! see provider details.
 
 use std::collections::VecDeque;
 

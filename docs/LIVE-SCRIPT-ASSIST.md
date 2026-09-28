@@ -22,7 +22,7 @@ Rewriting the unread script automatically, as the conversation happens, is the o
 - **Tracking.** Voice tracking works because the script is known and stable. Every rewrite forces a tracker rebuild, and frequent rewrites make the cursor unstable.
 - **Latency.** A good rewrite takes seconds; by the time it lands, the moment in the conversation has often passed.
 - **Compliance.** For an MTM consult the script is the compliance artifact (CMR required elements, OBRA-90 counseling). A model that rephrases can drop a required element, and a report measured against a moving script proves nothing.
-- **Clinical safety and privacy.** Generated text must never add clinical claims. Consult audio or transcripts may only reach a cloud model under a signed BAA (see D3 in `UPGRADE-2026.md`).
+- **Clinical safety and privacy.** Generated text must never add clinical claims. Consult audio or transcripts may only reach a cloud model under a signed BAA.
 
 Every principle below follows from one of these.
 
@@ -46,7 +46,7 @@ A read-only side channel. It shows:
 
 Placement: a slim rail beside the text column, or a line above the status bar. It never overlaps the reading area and is covered by the same screen-share protection as the window. Items fade when they're no longer relevant (the Nudge TTL and supersession rules in Minutes RFC 0004 already cover this).
 
-This stage is the live checklist planned as D6 in `UPGRADE-2026.md`. Live required-element tracking is open whitespace for MTM (ambient scribes only document afterwards), so Stage 1 is valuable even if the later stages never ship.
+This stage is the planned live required-element checklist. Live required-element tracking is open whitespace for MTM (ambient scribes only document afterwards), so Stage 1 is valuable even if the later stages never ship.
 
 ## Stage 2: Suggest
 

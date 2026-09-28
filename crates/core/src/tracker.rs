@@ -6,7 +6,7 @@
 //! substring matcher that lived in the UI: alignment is decided in Rust, in one
 //! tested place, and the app only renders the resulting position + state.
 //!
-//! Rules that drive it (see `docs/UPGRADE-2026.md`, D5):
+//! Rules that drive it:
 //!
 //! 1. **De-flicker.** Partial/volatile hypotheses move only a forward,
 //!    non-committing *preview* cursor (via [`AlignmentEngine::peek`]); finals

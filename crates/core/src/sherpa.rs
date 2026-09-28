@@ -1,7 +1,6 @@
 //! Portable on-device ASR provider (sherpa-onnx streaming Zipformer).
 //!
-//! The cross-platform [`crate::speech::SpeechProvider`] baseline (decision D4 in
-//! `docs/UPGRADE-2026.md`): true streaming, word/token-onset timestamps, CPU on
+//! The cross-platform [`crate::speech::SpeechProvider`] baseline: true streaming, word/token-onset timestamps, CPU on
 //! Windows/Linux/macOS from one code path, on-device (no HIPAA BAA surface), and
 //! hotword biasing toward the script's drug names. Feature-gated behind
 //! `sherpa`; the model files are loaded at runtime from paths, so this compiles

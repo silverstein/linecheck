@@ -19,7 +19,7 @@
 // Word-level runs are discriminative: a coincidence yields isolated single
 // word hits that local alignment resets to zero, while genuine reading
 // yields a contiguous run. This is the reading-tutor / karaoke-alignment
-// standard; see docs/SOTA-2026-tracking.md.
+// standard.
 // ──────────────────────────────────────────────────────────────
 
 /// Result of an alignment attempt.

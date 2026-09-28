@@ -1,8 +1,10 @@
 # Integrating with Prompter
 
-## For any script source
+Any app or workflow that produces scripts can hand them to Prompter.
 
-Prompter picks up consultation scripts from **`~/meetings/scripts/`**. Any `.md` file placed there appears automatically in Prompter's "Recent & Available Scripts" list on launch.
+## Watched folder
+
+Prompter picks up scripts from **`~/meetings/scripts/`**. Any `.md` file placed there appears automatically in Prompter's "Recent & Available Scripts" list on launch.
 
 ### Export format
 
@@ -74,6 +76,7 @@ Prompter lists all `.md` files in this directory, sorted by modification time (n
 
 Users can also Cmd+V in Prompter to paste a script from their clipboard. A script source can offer a "Copy Script" button that copies the formatted markdown.
 
-### Coming soon: URL scheme
+### URL scheme
 
-`prompter://open?file=/path/to/script.md` — will open Prompter with the script pre-loaded. Not yet implemented.
+- `prompter://open?file=/path/to/script.md` opens Prompter with that script loaded.
+- `prompter://open?consultation_id=abc-123` opens the most recently modified script in `~/meetings/scripts/` or `~/Downloads` whose filename contains the id, or whose frontmatter has `consultation_id: abc-123`.
