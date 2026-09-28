@@ -243,11 +243,12 @@ fn analyze_miscues(report: &ComplianceReport, insights: &mut Vec<Insight>) {
             category: InsightCategory::Delivery,
             severity: if d.verified_by_recording { Severity::Warning } else { Severity::Info },
             message: format!(
-                "{} line{} not delivered: {}{}.",
+                "{} line{} not delivered: {}{}",
                 d.omitted_lines.len(),
                 if d.omitted_lines.len() == 1 { "" } else { "s" },
                 shown.join(", "),
-                if more > 0 { format!(" and {more} more") } else { String::new() }
+                // The quoted lines carry their own closing punctuation.
+                if more > 0 { format!(" and {more} more.") } else { String::new() }
             ),
             advice: if d.verified_by_recording {
                 "Confirmed against the full recording. Check none of these were required.".into()
@@ -308,7 +309,11 @@ fn analyze_pauses(report: &ComplianceReport, insights: &mut Vec<Insight>) {
         insights.push(Insight {
             category: InsightCategory::PausePoints,
             severity: Severity::Praise,
-            message: format!("All {} pause points reached.", report.pause_points_total),
+            message: if report.pause_points_total == 1 {
+                "The pause point was reached.".into()
+            } else {
+                format!("All {} pause points reached.", report.pause_points_total)
+            },
             advice: "You checked in with the patient at every recommended moment.".into(),
         });
     } else if ratio < 0.5 {
