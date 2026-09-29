@@ -32,7 +32,7 @@ Repository secrets (Settings, then Secrets and variables, then Actions):
 | `TAURI_SIGNING_PRIVATE_KEY` | Linecheck updater private key |
 | `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | Its password |
 
-The Apple values are the same ones the Minutes release uses.
+Linecheck has its own Developer ID Application certificate (G2, expires 2031-09-18), separate from the one Minutes uses. Its private key, the `.p12` and the `.p12` password were created on 2026-09-29 and live in `~/.tauri/linecheck-devid/` on Mat's MacBook; keep a backup, because GitHub secrets can't be read back. The App Store Connect API key and issuer are shared with Minutes.
 
 ## The updater key
 
