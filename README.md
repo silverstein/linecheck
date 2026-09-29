@@ -30,9 +30,7 @@ Most teleprompters assume you're reading a monologue to a camera. They scroll at
 
 ## Install
 
-Download the latest build from [Releases](https://github.com/silverstein/linecheck/releases/latest). It needs macOS 13 or later on Apple silicon (the per-script language model needs macOS 14).
-
-v0.2.0 was released under the app's earlier name, Prompter. Unzip it and move `Prompter.app` to Applications. It's ad-hoc signed, not notarized, so macOS blocks the first launch: right-click the app and choose **Open**, or run `xattr -dr com.apple.quarantine /Applications/Prompter.app`. Later releases ship as a signed, notarized Linecheck DMG and update themselves.
+Download `Linecheck_<version>_aarch64.dmg` from the [latest release](https://github.com/silverstein/linecheck/releases/latest), open it, and drag Linecheck to Applications. It's signed and notarized, and it updates itself. It needs macOS 13 or later on Apple silicon (the per-script language model needs macOS 14).
 
 Allow microphone and speech recognition access when the first session starts. No account, no API keys.
 
