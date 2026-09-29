@@ -2,7 +2,7 @@
   "$schema": "https://raw.githubusercontent.com/nicehash/tauri/dev/crates/tauri-utils/schema.json",
   "productName": "Linecheck",
   "identifier": "com.businessvacation.linecheck",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "build": {
     "frontendDist": "./ui"
   },

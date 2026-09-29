@@ -2717,7 +2717,7 @@ dependencies = [
 
 [[package]]
 name = "prompter-app"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "crossbeam-channel",
  "dirs-next",
@@ -2733,7 +2733,7 @@ dependencies = [
 
 [[package]]
 name = "prompter-core"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "pretty_assertions",
  "serde",
