@@ -11,7 +11,9 @@ Linecheck is a free, open-source macOS teleprompter for calls where you have to 
 
 It was built for pharmacists delivering Medication Therapy Management (MTM) consultations over video, where every required line has to be said and the patient keeps interrupting. It works for any structured conversation.
 
-<!-- Demo GIF goes here: docs/assets/demo.gif (turn off "Hide from screen sharing" in Session options before recording) -->
+<p align="center">
+  <img src="docs/assets/demo.gif" alt="Linecheck following a medication review: it keeps its place through a misheard drug name and a skipped line, waits while the patient answers, follows the YES branch, and ends with a report of what was delivered" width="960">
+</p>
 
 ## Why another teleprompter?
 
