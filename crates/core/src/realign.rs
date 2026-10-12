@@ -28,6 +28,22 @@ const OMISSION: f32 = -0.4;
 /// A sentence counts as delivered when at least this share of its words matched.
 const SENTENCE_COVERED: f32 = 0.5;
 
+// Bound both the traceback allocation and the expensive fuzzy vocabulary
+// comparison pass before allocating either matrix. Live evidence is retained
+// when a recording is too large for this exact, quadratic verifier.
+const MAX_ALIGNMENT_CELLS: usize = 25_000_000;
+const MAX_VOCABULARY_PAIRS: usize = 1_000_000;
+const MAX_VOCABULARY_WORK: usize = 128_000_000;
+const MAX_INPUT_BYTES: usize = 4 * 1024 * 1024;
+const MAX_WORD_BYTES: usize = 256;
+
+/// A recording exceeds the bounded exact verifier's resource budget.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("recording verification exceeded the {limit} limit")]
+pub struct RealignmentError {
+    pub limit: &'static str,
+}
+
 /// Result of aligning a full transcript against the script's main sentences.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Realignment {
@@ -56,13 +72,52 @@ impl Realignment {
 }
 
 /// Align the full `transcript` against `sentences` (the script's main line).
+///
+/// Oversized inputs return no coverage evidence. Applications should prefer
+/// [`try_realign`] so they can explain why recording verification was skipped.
 pub fn realign(sentences: &[String], transcript: &str) -> Realignment {
+    try_realign(sentences, transcript).unwrap_or_else(|_| {
+        let words = transcript
+            .split(|c: char| !c.is_alphanumeric())
+            .filter(|word| !word.is_empty())
+            .count();
+        Realignment {
+            sentence_match: vec![0.0; sentences.len()],
+            covered: vec![false; sentences.len()],
+            matched_words: 0,
+            inserted_words: words,
+            transcript_words: words,
+        }
+    })
+}
+
+/// Run exact recording verification within explicit memory and work limits.
+/// An error carries no delivery evidence and must not replace live coverage.
+pub fn try_realign(
+    sentences: &[String],
+    transcript: &str,
+) -> Result<Realignment, RealignmentError> {
+    let input_bytes = sentences
+        .iter()
+        .try_fold(transcript.len(), |total, sentence| {
+            total.checked_add(sentence.len())
+        });
+    if input_bytes.is_none_or(|bytes| bytes > MAX_INPUT_BYTES) {
+        return Err(RealignmentError {
+            limit: "input size",
+        });
+    }
     // Script words with a word -> sentence map.
     let mut script: Vec<String> = Vec::new();
     let mut word_sentence: Vec<usize> = Vec::new();
     let mut sentence_len = vec![0usize; sentences.len()];
     for (si, s) in sentences.iter().enumerate() {
         for w in normalize(s).split_whitespace() {
+            if w.len() > MAX_WORD_BYTES {
+                return Err(RealignmentError {
+                    limit: "word length",
+                });
+            }
             script.push(w.to_string());
             word_sentence.push(si);
             sentence_len[si] += 1;
@@ -70,6 +125,11 @@ pub fn realign(sentences: &[String], transcript: &str) -> Realignment {
     }
     let spoken_norm = normalize(transcript);
     let spoken: Vec<&str> = spoken_norm.split_whitespace().collect();
+    if spoken.iter().any(|word| word.len() > MAX_WORD_BYTES) {
+        return Err(RealignmentError {
+            limit: "word length",
+        });
+    }
 
     let empty = Realignment {
         sentence_match: vec![0.0; sentences.len()],
@@ -79,7 +139,15 @@ pub fn realign(sentences: &[String], transcript: &str) -> Realignment {
         transcript_words: spoken.len(),
     };
     if script.is_empty() || spoken.is_empty() {
-        return empty;
+        return Ok(empty);
+    }
+
+    let (m, n) = (spoken.len(), script.len());
+    let cells = (m + 1).checked_mul(n + 1);
+    if cells.is_none_or(|count| count > MAX_ALIGNMENT_CELLS) {
+        return Err(RealignmentError {
+            limit: "alignment size",
+        });
     }
 
     // Intern both vocabularies so each distinct word pair is scored once (a
@@ -100,6 +168,27 @@ pub fn realign(sentences: &[String], transcript: &str) -> Realignment {
             *t_ids.entry(*w).or_insert(n)
         })
         .collect();
+    if s_ids
+        .len()
+        .checked_mul(t_ids.len())
+        .is_none_or(|pairs| pairs > MAX_VOCABULARY_PAIRS)
+    {
+        return Err(RealignmentError {
+            limit: "vocabulary size",
+        });
+    }
+    // Fuzzy comparison itself is quadratic in word length, so bounding only
+    // the number of pairs still permits expensive synthetic long-word inputs.
+    let script_chars: usize = s_ids.keys().map(|word| word.len()).sum();
+    let spoken_chars: usize = t_ids.keys().map(|word| word.len()).sum();
+    if script_chars
+        .checked_mul(spoken_chars)
+        .is_none_or(|work| work > MAX_VOCABULARY_WORK)
+    {
+        return Err(RealignmentError {
+            limit: "vocabulary comparison work",
+        });
+    }
     let mut s_vocab = vec![""; s_ids.len()];
     for (w, &i) in &s_ids {
         s_vocab[i] = w;
@@ -120,12 +209,9 @@ pub fn realign(sentences: &[String], transcript: &str) -> Realignment {
     const DIAG: u8 = 0;
     const UP: u8 = 1; // transcript word inserted
     const LEFT: u8 = 2; // script word omitted
-    let (m, n) = (spoken.len(), script.len());
-    let mut back = vec![0u8; (m + 1) * (n + 1)];
+    let mut back = vec![0u8; cells.expect("alignment size checked above")];
     let mut prev: Vec<f32> = (0..=n).map(|j| j as f32 * OMISSION).collect();
-    for j in 1..=n {
-        back[j] = LEFT;
-    }
+    back[1..=n].fill(LEFT);
     let mut cur = vec![0.0f32; n + 1];
     for i in 1..=m {
         cur[0] = prev[0] + INSERTION;
@@ -191,13 +277,13 @@ pub fn realign(sentences: &[String], transcript: &str) -> Realignment {
         .zip(&sentence_len)
         .map(|(&f, &len)| len > 0 && f >= SENTENCE_COVERED)
         .collect();
-    Realignment {
+    Ok(Realignment {
         sentence_match,
         covered,
         matched_words,
         inserted_words: spoken.len() - matched_words,
         transcript_words: spoken.len(),
-    }
+    })
 }
 
 #[cfg(test)]
@@ -247,5 +333,55 @@ mod tests {
         assert!(realign(&[], "hello there").covered.is_empty());
         let r = realign(&script(), "");
         assert_eq!(r.omitted().len(), 5);
+    }
+
+    #[test]
+    fn oversized_alignment_is_rejected_without_a_quadratic_allocation() {
+        let sentences = vec!["word ".repeat(5_000)];
+        let transcript = "word ".repeat(5_000);
+        assert_eq!(
+            try_realign(&sentences, &transcript).unwrap_err().limit,
+            "alignment size"
+        );
+        let conservative = realign(&sentences, &transcript);
+        assert_eq!(conservative.covered, vec![false]);
+        assert_eq!(conservative.matched_words, 0);
+        assert_eq!(conservative.inserted_words, 5_000);
+    }
+
+    #[test]
+    fn expensive_vocabulary_and_extreme_tokens_are_rejected() {
+        let unique = (0..1_001)
+            .map(|i| format!("word{i}"))
+            .collect::<Vec<_>>()
+            .join(" ");
+        assert_eq!(
+            try_realign(std::slice::from_ref(&unique), &unique)
+                .unwrap_err()
+                .limit,
+            "vocabulary size"
+        );
+        assert_eq!(
+            try_realign(&script(), &"a".repeat(MAX_WORD_BYTES + 1))
+                .unwrap_err()
+                .limit,
+            "word length"
+        );
+        assert_eq!(
+            try_realign(&script(), &"a".repeat(MAX_INPUT_BYTES + 1))
+                .unwrap_err()
+                .limit,
+            "input size"
+        );
+        let long_vocab = (0..100)
+            .map(|i| format!("{}{i}", "a".repeat(150)))
+            .collect::<Vec<_>>()
+            .join(" ");
+        assert_eq!(
+            try_realign(std::slice::from_ref(&long_vocab), &long_vocab)
+                .unwrap_err()
+                .limit,
+            "vocabulary comparison work"
+        );
     }
 }

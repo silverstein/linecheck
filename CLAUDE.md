@@ -76,7 +76,7 @@ Single-file vanilla JS/HTML/CSS. No framework, no build step. Communicates with 
 ## Key conventions
 
 - **No sibling repos**: Linecheck builds on its own (it no longer depends on `minutes-core`).
-- **Diagnostics**: `open -n -W -a Linecheck --args --transcribe-file <audio> --script <md> --out <json>` runs the post-session check on any recording (speech access belongs to the app, so it can't run from a shell). Each live run's recognizer stream is in `~/.linecheck/recording.jsonl`; replay it with `cargo run -p prompter-core --example replay`.
+- **Diagnostics**: `open -n -W -a Linecheck --args --transcribe-file <audio> --script <md> --out <json>` runs the post-session check on any recording (speech access belongs to the app, so it can't run from a shell). With **Save diagnostic replay** enabled (off by default), the latest run's script and recognizer stream are in `~/.linecheck/recording.jsonl`; replay it with `cargo run -p prompter-core --example replay`.
 - **Content protection**: `contentProtected: true` in tauri.conf.json prevents screen capture of the window.
 - **Script format**: `.script.md` — annotated markdown with optional YAML frontmatter, `> PAUSE:` and `> BRANCH:` directives. See SPEC.md.
 - **File paths**: Scripts in `~/meetings/scripts/`, compliance reports in `~/meetings/consults/`, settings in `~/.linecheck/settings.json`.

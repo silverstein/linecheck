@@ -353,11 +353,15 @@ impl ScriptTracker {
                 relocated: false,
             };
         }
-        if update.is_final {
+        let mut result = if update.is_final {
             self.observe_final(&update.text)
         } else {
             self.observe_partial(&update.text)
-        }
+        };
+        // A branch transition or relocation commits the cursor internally, but
+        // does not turn a volatile recognizer hypothesis into a final result.
+        result.committed = update.is_final;
+        result
     }
 
     fn observe_final(&mut self, text: &str) -> TrackUpdate {
@@ -417,7 +421,14 @@ impl ScriptTracker {
                 return selected;
             }
         }
-        self.committed_update(result.matched, None)
+        let mut update =
+            self.committed_update(result.matched && result.position == self.committed, None);
+        update.confidence = if update.matched {
+            result.confidence
+        } else {
+            0.0
+        };
+        update
     }
 
     fn observe_partial(&mut self, text: &str) -> TrackUpdate {
@@ -444,7 +455,11 @@ impl ScriptTracker {
             if self.reading_an_option(branch, text) {
                 return TrackUpdate {
                     sentence_index: self.preview,
-                    timeline_index: self.main_to_timeline.get(self.preview).copied().unwrap_or(0),
+                    timeline_index: self
+                        .main_to_timeline
+                        .get(self.preview)
+                        .copied()
+                        .unwrap_or(0),
                     committed: false,
                     matched: false,
                     confidence: 0.0,
@@ -478,7 +493,9 @@ impl ScriptTracker {
             // continuous reading `committed` never advances. A committed-anchored
             // cap froze the cursor permanently at committed + MAX_ADVANCE (the
             // "prompter never budges" bug). See tracker tests + examples/replay.
-            let capped = result.position.min(self.preview.saturating_add(MAX_ADVANCE));
+            let capped = result
+                .position
+                .min(self.preview.saturating_add(MAX_ADVANCE));
             if capped > self.preview {
                 self.preview = capped;
                 // Slide the engine's search window forward to follow the reader.
@@ -509,8 +526,14 @@ impl ScriptTracker {
             // continuous reading), so gating coverage on `committed` alone left
             // the compliance report empty. `committed` stays false (volatile),
             // so the recorder still distinguishes preview from confirmed.
-            matched: result.matched,
-            confidence: result.confidence,
+            // A capped advance or held-back re-read is a cursor decision, not
+            // evidence that the sentence currently displayed was spoken.
+            matched: result.matched && result.position == self.preview,
+            confidence: if result.matched && result.position == self.preview {
+                result.confidence
+            } else {
+                0.0
+            },
             // Derive the pause/branch cue from the live cursor so the operator
             // sees "wait for response" / the branch question as they reach it,
             // not only after a final lands (which may never happen). Pure lookup.
@@ -593,8 +616,12 @@ impl ScriptTracker {
     /// Choose a branch option by hand (the operator clicked it): the tracker
     /// follows the reader from the start of that option.
     pub fn choose_branch(&mut self, branch: usize, option: usize) {
-        let Some(b) = self.branches.get_mut(branch) else { return };
-        let Some(opt) = b.options.get_mut(option) else { return };
+        let Some(b) = self.branches.get_mut(branch) else {
+            return;
+        };
+        let Some(opt) = b.options.get_mut(option) else {
+            return;
+        };
         if let Some(e) = opt.engine.as_mut() {
             e.set_position(0);
         }
@@ -611,7 +638,9 @@ impl ScriptTracker {
         if let Some(ti) = ti {
             self.committed_timeline = ti;
         }
-        self.committed_state = TrackState::InBranch { option_label: label };
+        self.committed_state = TrackState::InBranch {
+            option_label: label,
+        };
     }
 
     /// The latest words match some option of `branch` at least as well as the
@@ -667,13 +696,19 @@ impl ScriptTracker {
             e.set_position(pos);
         }
         let label = opt.label.clone();
-        let ti = opt.timelines.get(pos).copied().unwrap_or(self.committed_timeline);
+        let ti = opt
+            .timelines
+            .get(pos)
+            .copied()
+            .unwrap_or(self.committed_timeline);
         let question = self.branches[branch].question.clone();
         self.mode = Mode::InBranch { branch, option };
-        // Reaching the branch confirms the main line up to it (with partials
-        // only, `committed` may still be far behind the live cursor), including
-        // when the speaker skipped the end of the lead-in.
-        let at = self.committed.max(self.preview).max(self.branches[branch].trigger.unwrap_or(0));
+        // Anchor the cursor at the branch. This is navigation only: reading an
+        // answer does not prove that the preceding main-line text was spoken.
+        let at = self
+            .committed
+            .max(self.preview)
+            .max(self.branches[branch].trigger.unwrap_or(0));
         self.engine.set_position(at);
         self.committed = at;
         self.preview = at;
@@ -694,7 +729,13 @@ impl ScriptTracker {
     /// Inside a selected option: follow the reader through its sentences
     /// (forward only), and return to the main line once they read on past the
     /// branch.
-    fn observe_in_branch(&mut self, branch: usize, option: usize, text: &str, is_final: bool) -> TrackUpdate {
+    fn observe_in_branch(
+        &mut self,
+        branch: usize,
+        option: usize,
+        text: &str,
+        is_final: bool,
+    ) -> TrackUpdate {
         if let Some(pm) = self.branches[branch].post_main {
             // Back on the main line: the post-branch sentence as a whole, or the
             // latest words matching the main line at or past it (more strongly
@@ -717,7 +758,8 @@ impl ScriptTracker {
                 // credit), so only trust it once the latest words have left the
                 // option.
                 _ if in_option < BRANCH_MIN_WORDS
-                    && align::similarity(text, &self.main_sentences[pm]) >= align::MATCH_THRESHOLD =>
+                    && align::similarity(text, &self.main_sentences[pm])
+                        >= align::MATCH_THRESHOLD =>
                 {
                     Some(pm)
                 }
@@ -813,7 +855,10 @@ impl ScriptTracker {
         // it before anyone has answered. Words that fit the question at least
         // as well as the best option are the question, not an answer.
         let question_s = align::similarity(text, &self.branches[branch].question);
-        if best_s >= align::MATCH_THRESHOLD && best_s - second_s >= BRANCH_MARGIN && best_s > question_s {
+        if best_s >= align::MATCH_THRESHOLD
+            && best_s - second_s >= BRANCH_MARGIN
+            && best_s > question_s
+        {
             Some(best_i)
         } else {
             None
@@ -1074,9 +1119,29 @@ mod tests {
         assert!(matches!(pick.state, TrackState::InBranch { .. }));
 
         // Resume the main line on a PARTIAL (post-branch sentence).
-        let back = t.observe(&SpeechUpdate::partial("does this make sense so far for you"));
-        assert_eq!(back.state, TrackState::Speaking, "left the branch on a partial");
+        let back = t.observe(&SpeechUpdate::partial(
+            "does this make sense so far for you",
+        ));
+        assert_eq!(
+            back.state,
+            TrackState::Speaking,
+            "left the branch on a partial"
+        );
         assert_eq!(t.position(), 3);
+        assert!(
+            !back.committed,
+            "a branch return does not finalize ASR text"
+        );
+    }
+
+    #[test]
+    fn selecting_a_branch_on_a_partial_does_not_finalize_the_hypothesis() {
+        let mut tracker = ScriptTracker::new(&sample_script());
+        let update = tracker.observe(&SpeechUpdate::partial(
+            "okay then lets keep moving along nicely",
+        ));
+        assert!(update.branch_choice.is_some());
+        assert!(!update.committed);
     }
 
     #[test]
@@ -1087,7 +1152,9 @@ mod tests {
             name: "Body".into(),
             word_count: 0,
             elements: vec![
-                Element::Text(vec![sent("muscle aches that dont go away are worth a call to us")]),
+                Element::Text(vec![sent(
+                    "muscle aches that dont go away are worth a call to us",
+                )]),
                 Element::Directive(Directive::Branch {
                     question: "Would you like me to send these notes to Dr. Patel?".into(),
                     options: vec![
@@ -1104,12 +1171,23 @@ mod tests {
             ],
         }]);
         let mut t = ScriptTracker::new(&script);
-        t.observe(&SpeechUpdate::finalized("muscle aches that dont go away are worth a call to us"));
-        let q = t.observe(&SpeechUpdate::finalized("you like me to send these notes to Dr Patel"));
-        assert!(q.branch_choice.is_none(), "the question alone picked {:?}", q.branch_choice);
+        t.observe(&SpeechUpdate::finalized(
+            "muscle aches that dont go away are worth a call to us",
+        ));
+        let q = t.observe(&SpeechUpdate::finalized(
+            "you like me to send these notes to Dr Patel",
+        ));
+        assert!(
+            q.branch_choice.is_none(),
+            "the question alone picked {:?}",
+            q.branch_choice
+        );
         assert!(matches!(q.state, TrackState::AtBranch { .. }));
         let a = t.observe(&SpeechUpdate::partial("no problem I'll print you a copy"));
-        assert_eq!(a.branch_choice.map(|c| c.option_label).as_deref(), Some("NO"));
+        assert_eq!(
+            a.branch_choice.map(|c| c.option_label).as_deref(),
+            Some("NO")
+        );
     }
 
     #[test]
@@ -1120,7 +1198,10 @@ mod tests {
         let u = t.observe(&SpeechUpdate::finalized(
             "great lets discuss your concerns in detail",
         ));
-        assert_eq!(u.branch_choice.map(|c| c.option_label).as_deref(), Some("YES"));
+        assert_eq!(
+            u.branch_choice.map(|c| c.option_label).as_deref(),
+            Some("YES")
+        );
         assert_eq!(t.position(), 2, "main cursor moves up to the branch point");
     }
 
@@ -1145,7 +1226,9 @@ mod tests {
             ],
         }]);
         let mut t = ScriptTracker::new(&script);
-        let u = t.observe(&SpeechUpdate::partial("great lets discuss your concerns in detail"));
+        let u = t.observe(&SpeechUpdate::partial(
+            "great lets discuss your concerns in detail",
+        ));
         assert!(u.branch_choice.is_none());
         assert_eq!(t.preview_position(), 0);
     }
@@ -1155,9 +1238,20 @@ mod tests {
         let mut t = ScriptTracker::new(&sample_script());
         t.choose_branch(0, 1);
         let u = t.observe(&SpeechUpdate::partial("okay then lets keep moving"));
-        assert_eq!(u.state, TrackState::InBranch { option_label: "NO".into() });
-        let u = t.observe(&SpeechUpdate::partial("does this make sense so far for you"));
-        assert_eq!(u.state, TrackState::Speaking, "returns to the main line after the answer");
+        assert_eq!(
+            u.state,
+            TrackState::InBranch {
+                option_label: "NO".into()
+            }
+        );
+        let u = t.observe(&SpeechUpdate::partial(
+            "does this make sense so far for you",
+        ));
+        assert_eq!(
+            u.state,
+            TrackState::Speaking,
+            "returns to the main line after the answer"
+        );
         assert_eq!(u.sentence_index, 3);
     }
 
@@ -1186,7 +1280,17 @@ mod tests {
 
     fn long_script(n: usize) -> Script {
         let sentences: Vec<Sentence> = (0..n)
-            .map(|i| sent(&format!("{} {} {} {} {} {}", w(i, 0), w(i, 1), w(i, 2), w(i, 3), w(i, 4), w(i, 5))))
+            .map(|i| {
+                sent(&format!(
+                    "{} {} {} {} {} {}",
+                    w(i, 0),
+                    w(i, 1),
+                    w(i, 2),
+                    w(i, 3),
+                    w(i, 4),
+                    w(i, 5)
+                ))
+            })
             .collect();
         script_from(vec![Section {
             name: "Body".into(),
@@ -1197,8 +1301,15 @@ mod tests {
 
     /// A distinct, deterministic word per (sentence, slot).
     fn w(i: usize, k: usize) -> String {
-        const SYL: [&str; 12] = ["ka", "lo", "mi", "ne", "pu", "ra", "si", "to", "vu", "ze", "bo", "di"];
-        format!("{}{}{}", SYL[i % 12], SYL[(i / 12 + k) % 12], SYL[(k * 5 + i) % 12])
+        const SYL: [&str; 12] = [
+            "ka", "lo", "mi", "ne", "pu", "ra", "si", "to", "vu", "ze", "bo", "di",
+        ];
+        format!(
+            "{}{}{}",
+            SYL[i % 12],
+            SYL[(i / 12 + k) % 12],
+            SYL[(k * 5 + i) % 12]
+        )
     }
 
     fn sentence_text(i: usize) -> String {
@@ -1216,12 +1327,45 @@ mod tests {
         for i in 30..34 {
             let u = t.observe(&SpeechUpdate::partial(sentence_text(i)));
             if u.relocated {
+                assert!(
+                    !u.committed,
+                    "relocating the cursor does not finalize ASR text"
+                );
                 moved = Some(u.sentence_index);
                 break;
             }
         }
         let at = moved.expect("relocator should move after agreement");
         assert!((30..=33).contains(&at), "relocated to {at}");
+    }
+
+    #[test]
+    fn capped_moves_are_not_evidence_for_the_intermediate_sentence() {
+        for final_update in [false, true] {
+            let mut tracker = ScriptTracker::new(&long_script(20));
+            let update = if final_update {
+                SpeechUpdate::finalized(sentence_text(9))
+            } else {
+                SpeechUpdate::partial(sentence_text(9))
+            };
+            let result = tracker.observe(&update);
+            assert_eq!(result.sentence_index, MAX_ADVANCE);
+            assert!(
+                !result.matched,
+                "no speech supported the intermediate cursor"
+            );
+            assert_eq!(result.confidence, 0.0);
+        }
+    }
+
+    #[test]
+    fn held_reread_does_not_credit_the_current_sentence() {
+        let mut tracker = ScriptTracker::new(&long_script(20));
+        tracker.set_position(8);
+        let result = tracker.observe(&SpeechUpdate::partial(sentence_text(6)));
+        assert_eq!(result.sentence_index, 8);
+        assert!(!result.relocated);
+        assert!(!result.matched);
     }
 
     #[test]
@@ -1234,7 +1378,10 @@ mod tests {
         assert!(!u.relocated);
         t.observe(&SpeechUpdate::partial(sentence_text(1)));
         let u = t.observe(&SpeechUpdate::partial(sentence_text(30)));
-        assert!(!u.relocated, "agreement must be consecutive and progressing");
+        assert!(
+            !u.relocated,
+            "agreement must be consecutive and progressing"
+        );
         assert!(t.preview_position() <= 2);
     }
 
@@ -1276,7 +1423,13 @@ mod tests {
     fn script_with_repeat(n: usize, orig: usize, dup: usize) -> Script {
         let long = format!("{} {}", sentence_text(orig), sentence_text(orig + 50));
         let sentences: Vec<Sentence> = (0..n)
-            .map(|i| if i == orig || i == dup { sent(&long) } else { sent(&sentence_text(i)) })
+            .map(|i| {
+                if i == orig || i == dup {
+                    sent(&long)
+                } else {
+                    sent(&sentence_text(i))
+                }
+            })
             .collect();
         script_from(vec![Section {
             name: "Body".into(),
@@ -1287,7 +1440,12 @@ mod tests {
 
     /// Read sentences `from..to` word by word as Apple-style partials (last 10
     /// words), returning the first relocation target.
-    fn read_until_relocated(t: &mut ScriptTracker, script: &Script, from: usize, to: usize) -> Option<usize> {
+    fn read_until_relocated(
+        t: &mut ScriptTracker,
+        script: &Script,
+        from: usize,
+        to: usize,
+    ) -> Option<usize> {
         let texts: Vec<String> = match &script.sections[0].elements[0] {
             Element::Text(ss) => ss.iter().map(|s| s.text.clone()).collect(),
             _ => unreachable!(),

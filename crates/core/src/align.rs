@@ -161,7 +161,10 @@ impl AlignmentEngine {
 
     /// Get the current estimated position (sentence index).
     pub fn position(&self) -> usize {
-        self.word_sentence.get(self.cursor_word).copied().unwrap_or(0)
+        self.word_sentence
+            .get(self.cursor_word)
+            .copied()
+            .unwrap_or(0)
     }
 
     /// Set the cursor position by sentence (e.g., manual navigation, or the
@@ -199,7 +202,13 @@ impl AlignmentEngine {
     /// Align `recognized` against every sentence in `lo..=hi` (inclusive). The
     /// `locality` cost per word of distance from the cursor biases endpoint
     /// selection toward the cursor; the whole-script relocator passes 0.0.
-    fn search_band(&self, recognized: &str, lo: usize, hi: usize, locality: f32) -> Option<SearchHit> {
+    fn search_band(
+        &self,
+        recognized: &str,
+        lo: usize,
+        hi: usize,
+        locality: f32,
+    ) -> Option<SearchHit> {
         if self.words.is_empty() || lo > hi || hi >= self.sentence_count {
             return None;
         }
@@ -363,8 +372,16 @@ impl AlignmentEngine {
         // sentences either side, so the same run isn't found twice) and flag a
         // rival that matches about as well.
         let s = hit.sentence;
-        let before = if s >= REPEAT_GAP { self.search_band(recognized, 0, s - REPEAT_GAP, 0.0) } else { None };
-        let after = if s + REPEAT_GAP <= last { self.search_band(recognized, s + REPEAT_GAP, last, 0.0) } else { None };
+        let before = if s >= REPEAT_GAP {
+            self.search_band(recognized, 0, s - REPEAT_GAP, 0.0)
+        } else {
+            None
+        };
+        let after = if s + REPEAT_GAP <= last {
+            self.search_band(recognized, s + REPEAT_GAP, last, 0.0)
+        } else {
+            None
+        };
         let ambiguous = before
             .into_iter()
             .chain(after)
@@ -473,6 +490,12 @@ impl AlignmentEngine {
 pub(crate) fn word_sim(a: &str, b: &str) -> f32 {
     if a == b {
         return 1.0;
+    }
+    // Numbers and digit-bearing units/identifiers must agree exactly. Fuzzy
+    // spelling is useful for a misheard name, but would also accept 1000 as
+    // 10000, or 20mg as 200mg, which are materially different instructions.
+    if a.chars().any(char::is_numeric) || b.chars().any(char::is_numeric) {
+        return 0.0;
     }
     if a.len() <= 3 || b.len() <= 3 {
         return 0.0;
@@ -646,6 +669,16 @@ pub fn similarity(recognized: &str, reference: &str) -> f32 {
 mod tests {
     use super::*;
 
+    #[test]
+    fn numeric_tokens_are_never_fuzzy_matches() {
+        for (left, right) in [("1000", "10000"), ("20mg", "200mg"), ("b120", "b1200")] {
+            assert_eq!(word_sim(left, right), 0.0);
+            assert_eq!(word_sim(right, left), 0.0);
+        }
+        assert_eq!(word_sim("1000", "1000"), 1.0);
+        assert_eq!(word_sim("20mg", "20mg"), 1.0);
+    }
+
     fn make_engine() -> AlignmentEngine {
         let sentences = vec![
             "hi thanks for meeting with me today".into(),
@@ -730,7 +763,10 @@ mod tests {
         eng.set_position(3);
         let r = eng.peek("between your supplements that");
         assert!(r.matched, "fragment should match the true sentence");
-        assert_eq!(r.position, 3, "must land on the true sentence, not jump ahead");
+        assert_eq!(
+            r.position, 3,
+            "must land on the true sentence, not jump ahead"
+        );
     }
 
     #[test]
@@ -869,7 +905,10 @@ mod tests {
     fn phonetic_keys_fold_spelling_variants() {
         assert_eq!(phonetic_key("metoprolol"), phonetic_key("metoprolol"));
         assert_eq!(phonetic_key("phosphate"), phonetic_key("fosfate"));
-        assert!(key_similarity(&phonetic_key("metoprolol"), &phonetic_key("metroprolaw")) >= PHONETIC_MATCH);
+        assert!(
+            key_similarity(&phonetic_key("metoprolol"), &phonetic_key("metroprolaw"))
+                >= PHONETIC_MATCH
+        );
         // Short / unrelated words stay apart.
         assert!(word_sim("the", "she") < WORD_MATCH);
         assert!(word_sim("warfarin", "morning") < WORD_MATCH);

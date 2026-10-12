@@ -9,18 +9,19 @@
 //! which pause points were reached, and the recognized transcript (which the
 //! prior pipeline never persisted).
 
+use crate::align::normalize;
 use crate::compliance::{ComplianceReport, DeliveryStats};
 use crate::realign::Realignment;
 use crate::script::{Directive, Element, Script};
 use crate::tracker::{TrackState, TrackUpdate};
 use std::collections::{HashMap, HashSet};
 
-/// One recognized, committed line of the session transcript.
+/// One recognized snapshot of the session transcript (possibly provisional).
 #[derive(Debug, Clone, PartialEq)]
 pub struct TranscriptLine {
-    /// Main-line sentence index the matcher committed to.
+    /// Main-line sentence index associated with this snapshot.
     pub sentence_index: usize,
-    /// The recognized text that produced this commit.
+    /// The recognized text that produced this snapshot.
     pub recognized: String,
     /// Whether this line entered a branch option (and which).
     pub branch_option: Option<String>,
@@ -45,9 +46,11 @@ pub struct SessionRecorder {
     /// Branch question -> chosen option label.
     branches_taken: HashMap<String, String>,
     transcript: Vec<TranscriptLine>,
-    /// Highest main sentence already written to the transcript, so partial
-    /// evidence adds one line per sentence reached instead of one per partial.
-    last_transcript_sentence: Option<usize>,
+    /// Last timeline location written to the transcript. Unlike a high-water
+    /// mark, this also records re-reads and individual branch sentences.
+    last_transcript_timeline: Option<usize>,
+    /// A provisional transcript line is replaced as the recognizer revises it.
+    last_transcript_partial: bool,
     /// Text of each main sentence (for "lines not delivered" excerpts).
     sentence_text: Vec<String>,
     /// Last sentence with match evidence (to spot going back to re-read).
@@ -126,7 +129,8 @@ impl SessionRecorder {
             pauses_reached: HashSet::new(),
             branches_taken: HashMap::new(),
             transcript: Vec::new(),
-            last_transcript_sentence: None,
+            last_transcript_timeline: None,
+            last_transcript_partial: false,
             sentence_text,
             last_matched: None,
             repeats: 0,
@@ -160,7 +164,7 @@ impl SessionRecorder {
         }
         // Going back to an earlier line (a restart / re-read) counts once per
         // backward move.
-        if update.matched {
+        if update.matched && !matches!(update.state, TrackState::InBranch { .. }) {
             if let Some(prev) = self.last_matched {
                 if update.sentence_index < prev {
                     self.repeats += 1;
@@ -175,14 +179,7 @@ impl SessionRecorder {
         // over-count the cursor-based path had.
         if update.matched {
             match &update.state {
-                // InBranch carries the pre-branch sentence index: reaching a
-                // branch means that sentence was read, so it counts as covered
-                // (this also fixes the same-final reach-branch-and-select case
-                // where only one InBranch update is emitted). A branch option's
-                // own words are intentionally not part of main-line adherence.
-                TrackState::Speaking
-                | TrackState::AtBranch { .. }
-                | TrackState::InBranch { .. } => {
+                TrackState::Speaking | TrackState::AtBranch { .. } => {
                     if update.sentence_index < self.covered.len() {
                         self.covered[update.sentence_index] = true;
                     }
@@ -193,7 +190,23 @@ impl SessionRecorder {
                         self.pauses_reached.insert(update.sentence_index);
                     }
                 }
-                TrackState::AdLibbing => {}
+                // InBranch keeps the pre-branch main index for navigation.
+                // Matching an answer (or selecting it manually) is no evidence
+                // that this earlier sentence was delivered. A single final can
+                // contain BOTH the full lead-in and answer, so preserve that
+                // direct evidence without inferring it from branch position.
+                TrackState::InBranch { .. } if update.branch_choice.is_some() => {
+                    if let Some(sentence) = self.sentence_text.get(update.sentence_index) {
+                        let sentence = normalize(sentence);
+                        if !sentence.is_empty()
+                            && format!(" {} ", normalize(recognized))
+                                .contains(&format!(" {sentence} "))
+                        {
+                            self.covered[update.sentence_index] = true;
+                        }
+                    }
+                }
+                TrackState::InBranch { .. } | TrackState::AdLibbing => {}
             }
         }
 
@@ -205,32 +218,39 @@ impl SessionRecorder {
                 .insert(choice.question.clone(), choice.option_label.clone());
         }
 
-        // Transcript: one authoritative line per committed final (including
-        // off-script speech, for a complete record) and one line per NEW
-        // sentence reached on partials (deduped by forward advance, so a stream
-        // of volatile partials on the same sentence doesn't spam the transcript).
-        let advanced = match self.last_transcript_sentence {
-            Some(prev) => update.sentence_index > prev,
-            None => true,
-        };
-        if update.committed || update.branch_choice.is_some() || (update.matched && advanced) {
-            self.transcript.push(TranscriptLine {
+        // Keep the latest hypothesis per contiguous timeline location, then
+        // replace it with the authoritative final. Retaining only the FIRST
+        // partial lost every word recognized later in that sentence. These are
+        // recognition snapshots; a rolling-window ASR input is not a verbatim
+        // full-session transcript.
+        if !recognized.trim().is_empty()
+            && (update.committed || update.branch_choice.is_some() || update.matched)
+        {
+            let line = TranscriptLine {
                 sentence_index: update.sentence_index,
                 recognized: recognized.to_string(),
-                branch_option: update
-                    .branch_choice
-                    .as_ref()
-                    .map(|c| c.option_label.clone()),
-            });
-            self.last_transcript_sentence = Some(
-                update
-                    .sentence_index
-                    .max(self.last_transcript_sentence.unwrap_or(0)),
-            );
+                branch_option: match &update.state {
+                    TrackState::InBranch { option_label } => Some(option_label.clone()),
+                    _ => None,
+                },
+            };
+            if self.last_transcript_partial
+                && self.last_transcript_timeline == Some(update.timeline_index)
+            {
+                *self
+                    .transcript
+                    .last_mut()
+                    .expect("partial has a transcript line") = line;
+            } else {
+                self.transcript.push(line);
+            }
+            self.last_transcript_timeline = Some(update.timeline_index);
+            self.last_transcript_partial = !update.committed;
         }
     }
 
-    /// Words with committed evidence of delivery.
+    /// Word count of sentences with alignment evidence of delivery.
+    /// This is a sentence-level estimate, not a verbatim spoken-word count.
     pub fn words_delivered(&self) -> usize {
         self.sentence_words
             .iter()
@@ -260,7 +280,7 @@ impl SessionRecorder {
         (covered, skipped)
     }
 
-    /// Build a speech-verified compliance report. `duration_secs` comes from the
+    /// Build an alignment-based compliance report. `duration_secs` comes from the
     /// caller (core has no clock).
     pub fn build_report(&self, duration_secs: u64) -> ComplianceReport {
         let (sections_covered, sections_skipped) = self.section_split();
@@ -290,7 +310,10 @@ impl SessionRecorder {
         }
         // A fifth of the script, at least 10 words (but never more than half a
         // very short script).
-        let min_words = (self.total_words / 5).max(10).min(self.total_words / 2).max(1);
+        let min_words = (self.total_words / 5)
+            .max(10)
+            .min(self.total_words / 2)
+            .max(1);
         if r.matched_words < min_words {
             return false;
         }
@@ -345,7 +368,7 @@ impl SessionRecorder {
 
     /// Render the recognized transcript as a portable markdown artifact.
     pub fn transcript_markdown(&self) -> String {
-        let mut out = format!("# Transcript — {}\n\n", self.script_title);
+        let mut out = format!("# Transcript: {}\n\n", self.script_title);
         if self.transcript.is_empty() {
             out.push_str("_No recognized speech recorded._\n");
             return out;
@@ -508,7 +531,10 @@ mod tests {
         let u = tracker.observe(&SpeechUpdate::partial(
             "kubernetes pod autoscaling webpack bundle configuration",
         ));
-        rec.record(&u, "kubernetes pod autoscaling webpack bundle configuration");
+        rec.record(
+            &u,
+            "kubernetes pod autoscaling webpack bundle configuration",
+        );
         assert_eq!(rec.build_report(5).words_delivered, 0);
         assert!(rec.transcript().is_empty());
     }
@@ -547,9 +573,104 @@ mod tests {
     }
 
     #[test]
+    fn partial_transcript_keeps_the_latest_words_and_is_replaced_by_the_final() {
+        let script = sample_script();
+        let mut tracker = ScriptTracker::new(&script);
+        let mut rec = SessionRecorder::new(&script);
+        for text in [
+            "hi thanks",
+            "hi thanks for meeting",
+            "hi thanks for meeting with me today",
+        ] {
+            rec.record(&tracker.observe(&SpeechUpdate::partial(text)), text);
+        }
+        assert_eq!(rec.transcript().len(), 1);
+        assert_eq!(
+            rec.transcript()[0].recognized,
+            "hi thanks for meeting with me today"
+        );
+        let text = "Hi, thanks for meeting with me today.";
+        rec.record(&tracker.observe(&SpeechUpdate::finalized(text)), text);
+        assert_eq!(rec.transcript().len(), 1);
+        assert_eq!(rec.transcript()[0].recognized, text);
+    }
+
+    #[test]
+    fn skipping_straight_to_an_answer_does_not_cover_its_lead_in() {
+        let (rec, _) = run(&["okay then lets keep moving along"]);
+        let report = rec.build_report(10);
+        assert_eq!(report.words_delivered, 0);
+        assert_eq!(
+            report.branches_taken.get("any questions"),
+            Some(&"NO".to_string())
+        );
+    }
+
+    #[test]
+    fn one_final_containing_the_lead_in_and_answer_preserves_both() {
+        let (rec, _) = run(&[
+            "you are currently taking warfarin and metformin okay then lets keep moving along",
+        ]);
+        let report = rec.build_report(10);
+        assert_eq!(report.words_delivered, 7);
+        assert_eq!(
+            report.branches_taken.get("any questions"),
+            Some(&"NO".to_string())
+        );
+    }
+
+    #[test]
+    fn manually_selecting_an_answer_does_not_cover_its_lead_in() {
+        let script = sample_script();
+        let mut tracker = ScriptTracker::new(&script);
+        let mut rec = SessionRecorder::new(&script);
+        tracker.choose_branch(0, 0);
+        let text = "great lets discuss your concerns now";
+        rec.record(&tracker.observe(&SpeechUpdate::partial(text)), text);
+        assert_eq!(rec.build_report(10).words_delivered, 0);
+        assert_eq!(rec.transcript()[0].branch_option.as_deref(), Some("YES"));
+    }
+
+    #[test]
+    fn partial_transcript_preserves_each_branch_sentence_and_reread() {
+        let script = crate::script::parse(
+            "# Story\n\nFirst opening words here. Final closing words here.\n",
+        )
+        .unwrap();
+        let mut rec = SessionRecorder::new(&script);
+        let partial = |timeline, state| TrackUpdate {
+            sentence_index: 0,
+            timeline_index: timeline,
+            committed: false,
+            matched: true,
+            confidence: 1.0,
+            state,
+            branch_choice: None,
+            relocated: false,
+        };
+        let branch = || TrackState::InBranch {
+            option_label: "YES".into(),
+        };
+        rec.record(&partial(3, branch()), "First answer sentence");
+        rec.record(&partial(4, branch()), "Second answer sentence");
+        rec.record(
+            &partial(1, TrackState::Speaking),
+            "First opening words here",
+        );
+        assert_eq!(rec.transcript().len(), 3);
+        assert!(rec.transcript()[..2]
+            .iter()
+            .all(|line| line.branch_option.as_deref() == Some("YES")));
+        assert_eq!(rec.transcript()[2].branch_option, None);
+    }
+
+    #[test]
     fn repeats_and_off_script_are_counted_once_per_event() {
         use crate::tracker::{TrackState, TrackUpdate};
-        let script = crate::script::parse("# A\n\nOne two three four. Five six seven eight. Nine ten eleven twelve.\n").unwrap();
+        let script = crate::script::parse(
+            "# A\n\nOne two three four. Five six seven eight. Nine ten eleven twelve.\n",
+        )
+        .unwrap();
         let mut rec = SessionRecorder::new(&script);
         let up = |i: usize, state: TrackState, matched: bool| TrackUpdate {
             sentence_index: i,
@@ -575,17 +696,21 @@ mod tests {
 
     #[test]
     fn realignment_replaces_live_coverage_only_with_a_real_recording() {
-        let script = crate::script::parse("# A\n\nOne two three four. Five six seven eight. Nine ten eleven twelve.\n").unwrap();
+        let script = crate::script::parse(
+            "# A\n\nOne two three four. Five six seven eight. Nine ten eleven twelve.\n",
+        )
+        .unwrap();
         let mut rec = SessionRecorder::new(&script);
         let tiny = crate::realign::realign(rec.sentences(), "one two");
         assert!(!rec.apply_realignment(&tiny), "too little to trust");
-        let full = crate::realign::realign(
-            rec.sentences(),
-            "one two three four nine ten eleven twelve",
-        );
+        let full =
+            crate::realign::realign(rec.sentences(), "one two three four nine ten eleven twelve");
         assert!(rec.apply_realignment(&full));
         let r = rec.build_report(60);
         assert!(r.delivery.verified_by_recording);
-        assert_eq!(r.delivery.omitted_lines, vec!["Five six seven eight.".to_string()]);
+        assert_eq!(
+            r.delivery.omitted_lines,
+            vec!["Five six seven eight.".to_string()]
+        );
     }
 }

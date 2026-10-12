@@ -1,6 +1,7 @@
 //! Offline replay of a recorded ASR stream through the `ScriptTracker`.
 //!
-//! The app records the raw recognizer stream (script + every `{text, final}`
+//! With Save diagnostic replay enabled (off by default), the app records
+//! the raw recognizer stream (script + every `{text, final}`
 //! event) to `~/.linecheck/recording.jsonl` during a session. Replaying it here
 //! drives the exact same tracking logic without a live read, so the matcher can
 //! be tuned by watching where the cursor freezes / jumps / lags -- with the
@@ -64,8 +65,8 @@ fn main() {
                 total = t.sentence_count();
                 recorder = Some(SessionRecorder::new(&parsed));
                 println!(
-                    "# {total} main sentences | window={window} tail={tail}\n# {:>8} {} {:>4} {:>5} {:>4}  {:<9} tail",
-                    "t(ms)", "F", "idx", "d", "conf", "state"
+                    "# {total} main sentences | window={window} tail={tail}\n# {:>8} F {:>4} {:>5} {:>4}  {:<9} tail",
+                    "t(ms)", "idx", "d", "conf", "state"
                 );
                 tracker = Some(t);
             }
@@ -98,7 +99,7 @@ fn main() {
                 events += 1;
                 let state = format!("{:?}", u.state);
                 let state = state
-                    .split(|c| c == ' ' || c == '{')
+                    .split([' ', '{'])
                     .next()
                     .unwrap_or(&state);
                 let flag = if delta.abs() >= 2 { " <== JUMP" } else { "" };

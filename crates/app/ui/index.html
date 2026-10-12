@@ -5,16 +5,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Linecheck</title>
 <link rel="stylesheet" href="style.css">
-<style>/* empty */</style>
 </head>
 <body>
 <div class="titlebar" data-tauri-drag-region></div>
-<div class="error-bar" id="err"></div>
+<div class="error-bar" id="err" role="alert"></div>
 <div class="update-bar" id="updateBar">
   <span id="updateText"></span>
   <button class="btn-ghost" id="updateBtn">Install and restart</button>
 </div>
-<div class="nav" id="nav"></div>
+<nav class="nav" id="nav" aria-label="Script sections"></nav>
+<div class="script-summary" id="scriptSummary"></div>
 
 <div class="empty" id="empty">
   <div class="empty-icon">&#x1F4CB;</div>
@@ -33,18 +33,13 @@
 
 <div class="start-bar" id="startBar">
   <button class="btn-primary" id="btnStart">Start Session</button>
-  <span class="hint setup-hint"><span class="cue-mini">&#9656;</span> is your reading line &mdash; put it just under your camera<br><kbd>[</kbd> <kbd>]</kbd> move &middot; <kbd>,</kbd> <kbd>.</kbd> width &middot; <kbd>+</kbd> <kbd>&minus;</kbd> size &middot; <kbd>Space</kbd> start &middot; <kbd>H</kbd> shortcuts</span>
+  <span class="hint setup-hint"><span class="cue-mini">&#9656;</span> is your reading line : put it just under your camera<br><kbd>[</kbd> <kbd>]</kbd> move &middot; <kbd>,</kbd> <kbd>.</kbd> width &middot; <kbd>+</kbd> <kbd>&minus;</kbd> size &middot; <kbd>Space</kbd> start &middot; <kbd>H</kbd> shortcuts</span>
   <div style="flex:1"></div>
-  <div class="audio-viz mic-test" id="micTest" title="Mic test — speak to see bars move">
-    <div class="bar"></div><div class="bar"></div><div class="bar"></div>
-    <div class="bar"></div><div class="bar"></div><div class="bar"></div>
-  </div>
-  <span id="micTestLabel" class="hint">Mic</span>
-  <div style="width:12px"></div>
+  <span class="hint" title="Microphone and speech permissions are checked when you start.">On-device speech</span>
   <button class="btn-ghost" id="btnClose" style="padding:8px 14px">Close</button>
 </div>
 
-<div class="idle-ask" id="idleAsk">
+<div class="idle-ask" id="idleAsk" role="status">
   <span id="idleAskText"></span>
   <button class="btn-ghost" id="idleKeep">Keep going</button>
   <button class="btn-ghost" id="idleEnd">End session</button>
@@ -53,15 +48,15 @@
 <div class="status" id="status">
   <div class="status-l">
     <div class="dot" id="dot"></div>
-    <div class="audio-viz" id="audioViz" title="Mic level">
+    <div class="audio-viz" id="audioViz" title="Recognized speech activity (not microphone level)" aria-hidden="true">
       <div class="bar"></div><div class="bar"></div><div class="bar"></div>
       <div class="bar"></div><div class="bar"></div><div class="bar"></div>
       <div class="bar"></div><div class="bar"></div>
     </div>
-    <span id="stLabel">Ready</span>
+    <span id="stLabel" role="status" aria-live="polite">Ready</span>
     <div class="sep"></div>
-    <div class="progress-bar"><div class="progress-fill" id="progFill" style="width:0%"></div></div>
-    <span id="stWords" style="font-variant-numeric:tabular-nums">0 / 0</span>
+    <div class="progress-bar" id="positionProgress" role="progressbar" aria-label="Reading position, not verified coverage" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div class="progress-fill" id="progFill" style="width:0%"></div></div>
+    <span id="stWords" title="Reading position only. Delivered coverage is measured from speech in the report." style="font-variant-numeric:tabular-nums">0 / 0</span>
     <div class="sep"></div>
     <span id="stTime" style="font-variant-numeric:tabular-nums">0:00</span>
     <div class="sep"></div>
@@ -70,37 +65,39 @@
   <div class="status-r">
     <div class="speed-group">
       <span class="speed-val" id="speedVal">150 wpm</span>
-      <input type="range" id="speedSlider" min="80" max="300" value="150" step="10">
+      <input type="range" id="speedSlider" min="80" max="300" value="150" step="10" aria-label="Timer scrolling speed in words per minute">
     </div>
     <div class="sep"></div>
-    <button id="btnFontDown">A&#x2212;</button>
+    <button id="btnFontDown" aria-label="Decrease font size">A&#x2212;</button>
     <span class="font-val" id="fontVal">34</span>
-    <button id="btnFontUp">A+</button>
+    <button id="btnFontUp" aria-label="Increase font size">A+</button>
+    <button id="btnPause" class="session-control" title="Pause or resume the prompter (Space)">Pause</button>
     <div class="sep"></div>
     <button id="btnEnd" class="end-btn" title="End the session and see the report (Esc)">End</button>
     <div class="sep end-sep"></div>
-    <button id="btnHelp">?</button>
+    <button id="btnHelp" aria-label="Keyboard shortcuts and session options">?</button>
     <div class="sep"></div>
-    <span class="pin" id="pinBtn" title="Always on top">&#x1F4CC;</span>
+    <button class="pin" id="pinBtn" title="Always on top" aria-label="Always on top" aria-pressed="false">&#x1F4CC;</button>
   </div>
 </div>
 
-<div class="overlay" id="doneOverlay"><div class="card" id="doneCard"></div></div>
+<div class="overlay" id="doneOverlay" role="dialog" aria-modal="true" aria-labelledby="reportTitle"><div class="card" id="doneCard" tabindex="-1"></div></div>
 
-<div class="help" id="helpOverlay">
-  <div class="help-card" id="helpCard">
+<div class="help" id="helpOverlay" role="dialog" aria-modal="true" aria-labelledby="helpTitle">
+  <div class="help-card" id="helpCard" tabindex="-1">
+    <div class="dialog-heading"><h2 id="helpTitle">Shortcuts &amp; options</h2><button class="btn-ghost" id="btnHelpClose" aria-label="Close shortcuts and options">Close</button></div>
     <h3>Reading position</h3>
     <table>
       <tr><td>[ / ]</td><td>Move the reading line up / down (keep it just under your camera)</td></tr>
       <tr><td>, / .</td><td>Narrower / wider text column</td></tr>
-      <tr><td>+ / &ndash;</td><td>Font size</td></tr>
+      <tr><td>+ / -</td><td>Font size</td></tr>
     </table>
     <h3 style="margin-top:18px">Moving around</h3>
     <table>
       <tr><td>&#x2191; &#x2193;</td><td>Previous / Next sentence</td></tr>
       <tr><td>Click a line</td><td>Make it the current line</td></tr>
       <tr><td>1 &ndash; 9</td><td>Jump to section</td></tr>
-      <tr><td>Tab / Enter</td><td>Choose a branch answer by hand</td></tr>
+      <tr><td>Tab / Enter</td><td>Focus controls / activate the focused control</td></tr>
     </table>
     <h3 style="margin-top:18px">Session</h3>
     <table>
@@ -108,11 +105,13 @@
       <tr><td>Esc</td><td>End session (or click End)</td></tr>
       <tr><td>&#8984;O / &#8984;V</td><td>Open file / Paste script</td></tr>
       <tr><td>H</td><td>This help</td></tr>
+      <tr><td>M</td><td>Cycle line highlighting</td></tr>
     </table>
     <h3 style="margin-top:22px">Session options</h3>
     <label class="opt"><input type="checkbox" id="optHidden"> Hide Linecheck from screenshots, recordings and screen sharing (Zoom, Meet) <span class="opt-note">On by default; also in the menu-bar icon</span></label>
-    <label class="opt"><input type="checkbox" id="optVerify"> Double-check coverage against the full recording after each session <span class="opt-note">Audio is deleted once checked</span></label>
+    <label class="opt"><input type="checkbox" id="optVerify"> Double-check coverage against the full recording after each session <span class="opt-note">Audio is deleted after checking unless Keep session audio is on</span></label>
     <label class="opt"><input type="checkbox" id="optKeepAudio"> Keep session audio <span class="opt-note">Off by default: consult audio is patient data</span></label>
+    <label class="opt"><input type="checkbox" id="optDiagnostics"> Save diagnostic replay <span class="opt-note">Off by default: keeps script and recognized speech locally until manually deleted</span></label>
     <label class="opt"><input type="checkbox" id="optOther"> Detect when the patient is talking on a call <span class="opt-note">Uses call audio; needs Screen &amp; System Audio Recording permission</span></label>
   </div>
 </div>
@@ -121,17 +120,25 @@
 // ═══════════════════════════════════════════════════════════
 //  Linecheck — teleprompter engine
 //  All DOM mutations use safe createElement / textContent.
-//  Script data is first-party from our own Rust parser via Tauri IPC.
+//  Script text is untrusted content; never interpret it as HTML.
 // ═══════════════════════════════════════════════════════════
 
 const { invoke } = window.__TAURI__.core;
 const { open } = window.__TAURI__.dialog;
 const { listen } = window.__TAURI__.event;
 
-// Audio mode: when mic is active, VAD controls scroll instead of timer
+// Voice tracking and timer scrolling are mutually exclusive.
 let audioMode = false;
-let vadSpeaking = false;
-let vadAdvanceTimer = null;  // accumulates speaking time to advance sentences
+let speechStarting = false;
+let speechActivityTimer = null;
+let sessionEpoch = 0;
+let trackingReady = false;
+let timerFallbackUsed = false;
+let reportPending = false;
+let pendingSpeechStop = null;
+let speechStopRequired = false;
+let pendingResetCleanup = null;
+let resetCleanupRequired = false;
 
 // ── State ──
 let script = null;
@@ -140,13 +147,11 @@ let mainSentenceItemIdx = []; // tracker sentence_index -> items index
 let otherSpeaking = false;     // call audio: the patient is talking
 let liveCue = null;            // 'pause' when the tracker reached a PAUSE point
 let turnEnded = false;         // the patient just finished answering at a pause
-let otherUnlisten = null;
-let trackUnlisten = null;     // 'track-update' (Rust tracker) subscription
 let idx = 0;
-let state = 'idle';      // idle | loaded | run | pause | wait | done
+let state = 'idle';      // idle | loaded | starting | run | pause | wait | done
 let speed = 150;
 let fontSize = 34;
-let hlMode = 'soft';   // 'soft' | 'glow' | 'off'  (press H to cycle)
+let hlMode = 'soft';   // 'soft' | 'glow' | 'off'  (press M to cycle)
 function cycleHl(){
   hlMode = hlMode==='soft' ? 'glow' : hlMode==='glow' ? 'off' : 'soft';
   if(els.tp) els.tp.dataset.hl = hlMode;
@@ -164,9 +169,9 @@ const $=id=>document.getElementById(id);
 const els = {};
 function initRefs(){
   ['err','nav','empty','tp','startBar','status','dot','audioViz','stLabel','stCurText',
-   'progFill','stWords','stTime','speedVal','speedSlider','fontVal',
+   'progFill','positionProgress','scriptSummary','stWords','stTime','speedVal','speedSlider','fontVal',
    'doneOverlay','doneCard','helpOverlay','helpCard','recentsContainer','pinBtn',
-   'btnOpen','btnPaste','btnStart','btnClose','btnFontDown','btnFontUp','btnHelp','btnEnd'
+   'btnOpen','btnPaste','btnStart','btnClose','btnFontDown','btnFontUp','btnHelp','btnEnd','btnPause'
   ].forEach(id=>{els[id]=$(id)});
 }
 
@@ -180,6 +185,8 @@ document.addEventListener('DOMContentLoaded', ()=>{
   els.btnFontDown.addEventListener('click', ()=>setFont(-2));
   els.btnFontUp.addEventListener('click', ()=>setFont(2));
   els.btnHelp.addEventListener('click', toggleHelp);
+  $('btnHelpClose').addEventListener('click', toggleHelp);
+  els.btnPause.addEventListener('click', toggle);
   $('idleKeep').addEventListener('click', noteScript);
   $('idleEnd').addEventListener('click', ()=>{ if(state==='run'||state==='pause'||state==='wait') endSession(); });
   els.btnEnd.addEventListener('click', ()=>{
@@ -190,7 +197,8 @@ document.addEventListener('DOMContentLoaded', ()=>{
   els.speedSlider.addEventListener('input', e=>{
     speed = +e.target.value;
     els.speedVal.textContent = speed+' wpm';
-    if(state==='run'){stopScroll();startScroll()}
+    if(state==='run'&&!audioMode){stopScroll();startScroll()}
+    updateScriptSummary();
     persistSettings();
   });
   els.pinBtn.addEventListener('click', togglePin);
@@ -220,6 +228,7 @@ document.addEventListener('DOMContentLoaded', ()=>{
 
 // ── File open ──
 async function openFile(){
+  if(!canReplaceScript()) return;
   try{
     const p = await open({filters:[{name:'Script',extensions:['md','txt','script.md']}],multiple:false});
     if(p){
@@ -232,6 +241,7 @@ async function openFile(){
 
 // ── Paste ──
 async function pasteScript(){
+  if(!canReplaceScript()) return;
   try{
     const txt = await navigator.clipboard.readText();
     if(!txt||!txt.trim()){showErr('Clipboard is empty');return}
@@ -243,6 +253,7 @@ async function pasteScript(){
 // ── Drag-and-drop ──
 async function handleDrop(e){
   e.preventDefault(); e.stopPropagation();
+  if(!canReplaceScript()) return;
   // Tauri v2: files come from the dataTransfer
   const files = e.dataTransfer?.files;
   if(files && files.length > 0){
@@ -258,7 +269,21 @@ async function handleDrop(e){
 }
 
 // ── Load script ──
+function canReplaceScript(){
+  if(state==='starting'||state==='run'||state==='pause'||state==='wait'||reportPending){
+    showErr('Finish the current session before opening another script.');
+    return false;
+  }
+  return true;
+}
 function loadScript(data){
+  if(!canReplaceScript()) return;
+  if(!data.sections?.some(sec=>sec.elements.some(el=>el.type==='text'&&el.sentences.length))){
+    showErr('This script has no main spoken lines. Add spoken text before starting a session.');
+    return;
+  }
+  sessionEpoch++;
+  stopVerificationListeners();
   script = data;
   hideErr();
   stopScroll(); stopClock();
@@ -280,72 +305,80 @@ function loadScript(data){
   });
   idx=0; secTimes={}; branchDecisions={};
   buildNav(); buildTP();
+  updateScriptSummary();
   highlight();
-  show('nav'); show('startBar'); show('tp');
+  show('nav'); show('startBar'); show('tp'); show('scriptSummary');
   // Snap the first line onto the reading line, then keep it there (the follow
   // loop also absorbs late layout changes: saved font size, width, resizes).
   requestAnimationFrame(()=>{ snapToCurrent(); placeReadline(); updateGuide(); startFollow(); });
   hide('empty'); hide('status'); hide('doneOverlay');
 
-  // Web Speech API handles mic access when session starts
+  els.btnStart.disabled=false;
+  els.btnStart.textContent='Start Session';
+  els.btnStart.focus();
 }
 
-// ── Mic test (pre-session) ──
-let micTestUnlisten = null;
-async function startMicTest(){
-  try{
-    // Use the same start_audio but we'll stop it when session starts
-    await invoke('start_audio', { sentences: [] });
-    const label = document.getElementById('micTestLabel');
-    if(label) label.textContent = 'Mic ready';
-
-    micTestUnlisten = await listen('vad', (event)=>{
-      const {speaking, level} = event.payload;
-      const viz = document.getElementById('micTest');
-      if(!viz) return;
-      const bars = viz.querySelectorAll('.bar');
-      bars.forEach((bar, i)=>{
-        const jitter = Math.sin(Date.now()/100 + i*1.5) * 0.3 + 0.7;
-        const h = speaking ? Math.max(2, Math.min(level,100) * jitter * 0.22) : 2;
-        bar.style.height = h + 'px';
-        bar.style.background = speaking ? 'var(--green)' : 'var(--text-muted)';
-      });
-      if(label) label.textContent = speaking ? 'Hearing you' : 'Mic ready';
-    });
-  }catch(e){
-    const label = document.getElementById('micTestLabel');
-    if(label) label.textContent = 'No mic';
-  }
-}
-function stopMicTest(){
-  if(micTestUnlisten){micTestUnlisten();micTestUnlisten=null}
-  invoke('stop_audio').catch(()=>{});
-  // Brief delay before session starts its own audio
+function updateScriptSummary(){
+  if(!script) return;
+  const minutes = Math.max(1, Math.ceil(script.word_count/speed));
+  els.scriptSummary.textContent = script.title+' · '+script.sections.length+' sections · '+script.word_count+' words · about '+minutes+' min at '+speed+' wpm (excluding pauses)';
 }
 
 // ── Session lifecycle ──
 async function startSession(){
   if(state!=='loaded')return;
-
-  // Stop mic test first, wait for audio to release
-  stopMicTest();
-  await new Promise(r=>setTimeout(r, 300));
-
-  state='run'; t0=Date.now(); secTimes={0:Date.now()};
+  state='starting';
+  const epoch=++sessionEpoch;
+  trackingReady=false;
+  timerFallbackUsed=false;
+  els.btnStart.disabled=true;
+  els.btnStart.textContent='Starting…';
+  hideErr();
   hide('startBar'); show('status');
+  els.stTime.textContent='0:00';
+  updateSt();
+
+  // Reset may still be stopping the previous helper or clearing its tracker.
+  // Never initialize a new tracker until both operations have completed.
+  try{
+    if(resetCleanupRequired) await ensureResetCleanup();
+    else if(pendingSpeechStop||speechStopRequired) await stopAppleSpeech({strict:true});
+  }catch(e){
+    failSessionStart('The previous microphone session could not be closed: '+e+'. Try Start Session again.');
+    return;
+  }
+  if(epoch!==sessionEpoch) return;
+  t0=Date.now(); secTimes={[items[idx]?.section??0]:t0};
 
   // Build the canonical Rust tracker for this session (speech-verified coverage
   // + compliance). The track-update events it produces drive the highlight.
-  let trackingOk = false;
   if(script && script.source){
-    trackingOk = await invoke('init_tracking', {text: script.source}).then(()=>true).catch(()=>false);
+    try{
+      await invoke('init_tracking', {text: script.source});
+      trackingReady=true;
+    }catch(e){
+      resetCleanupRequired=true;
+      failSessionStart('Could not initialize voice tracking: '+e+'. Try Start Session again.');
+      return;
+    }
   }
-  if(trackingOk){
+  if(epoch!==sessionEpoch) return;
+  if(trackingReady){
+    // Starting from a manually selected line must anchor the tracker there too.
+    const sentenceIndex=mainSentenceItemIdx.findLastIndex(itemIndex=>itemIndex<=idx);
+    if(sentenceIndex>0){
+      await invoke('set_tracking_position',{sentenceIndex}).catch(e=>showErr('Could not set the starting line: '+e));
+    }
+    if(epoch!==sessionEpoch||state!=='starting') return;
+    state='run';
     startAppleSpeech();   // speech + track-update drive the cursor
   } else {
     // No tracker (parse failed / no source): fall back to timer auto-scroll so
     // the teleprompter still advances instead of sitting stuck.
+    state='run';
+    timerFallbackUsed=true;
     startScroll();
+    if(!script.source) showErr('This script has no source text. Timer mode does not verify delivery.');
   }
 
   startFollow();                                   // eased scroll follows the cursor
@@ -353,28 +386,55 @@ async function startSession(){
   placeReadline(); updateGuide();
   updateSt(); startClock();
 }
+
+function failSessionStart(message){
+  state='loaded'; t0=null;
+  els.btnStart.disabled=false;
+  els.btnStart.textContent='Start Session';
+  hide('status'); show('startBar');
+  updateSt(); showErr(message);
+}
+
+function ensureResetCleanup(){
+  if(pendingResetCleanup) return pendingResetCleanup;
+  if(!resetCleanupRequired) return Promise.resolve();
+  const cleanup=stopAppleSpeech({strict:true}).then(()=>invoke('clear_tracking')).then(()=>{
+    resetCleanupRequired=false;
+  }).finally(()=>{
+    if(pendingResetCleanup===cleanup) pendingResetCleanup=null;
+  });
+  pendingResetCleanup=cleanup;
+  return cleanup;
+}
+
 function resetAll(){
-  stopScroll(); stopClock(); stopAppleSpeech(); stopFollow(); stopIdleWatch();
-  invoke('clear_tracking').catch(()=>{});
+  if(reportPending||state==='starting') return;
+  sessionEpoch++;
+  stopVerificationListeners();
+  stopScroll(); stopClock(); stopFollow(); stopIdleWatch();
+  resetCleanupRequired=true;
+  ensureResetCleanup().catch(e=>showErr('Could not close the previous microphone session: '+e));
   script=null; items=[]; idx=0; mainSentenceItemIdx=[]; state='idle'; branchCur=null;
-  updateGuide();
-  hide('nav'); hide('tp'); hide('startBar'); hide('status'); hide('doneOverlay');
+  trackingReady=false;
+  updateGuide(); updateEnd();
+  hide('nav'); hide('tp'); hide('scriptSummary'); hide('startBar'); hide('status'); hide('doneOverlay');
   show('empty');
+  els.btnOpen.focus();
 }
 
 // ── Auto-scroll ──
 function startScroll(){
   stopScroll();
-  if(state!=='run')return;
+  if(state!=='run'||audioMode)return;
   scheduleNext();
 }
 function stopScroll(){if(timer){clearTimeout(timer);timer=null}}
 function scheduleNext(){
-  if(state!=='run'||idx>=items.length)return;
+  if(state!=='run'||audioMode||idx>=items.length)return;
   const w = items[idx].words||4;
   const ms = w * (60000/speed);
   timer = setTimeout(()=>{
-    if(state!=='run')return;
+    if(state!=='run'||audioMode)return;
     if(idx>=items.length-1){endSession();return}
     idx++;
     trackSection();
@@ -391,38 +451,47 @@ function trackSection(){
 // SFSpeechRecognizer streams recognized text in real-time.
 // We match spoken words against script sentences to track position.
 
-let speechUnlisten = null;
+let speechListeners = [];
+let speechEpoch = 0;
 
 async function startAppleSpeech(){
+  const epoch=++speechEpoch;
+  // Subscribe before starting the helper: permission/startup errors may arrive
+  // before the start_speech command resolves.
+  async function subscribe(name, handler){
+    const off=await listen(name, event=>{
+      if(epoch===speechEpoch) handler(event);
+    });
+    if(epoch!==speechEpoch){ off(); return false; }
+    speechListeners.push(off);
+    return true;
+  }
+  audioMode=true;
+  speechStarting=true;
+  stopScroll();
+  updateSt();
   try{
-    await invoke('start_speech');
-    audioMode = true;
-
-    speechUnlisten = await listen('speech', (event)=>{
-      const {text, is_final} = event.payload;
+    if(!await subscribe('speech', (event)=>{
+      const {text} = event.payload;
       if(state!=='run') return;
       if(!text || text.length < 5) return;
 
-      // Update visualizer
-      const viz = els.audioViz;
-      if(viz){
-        viz.querySelectorAll('.bar').forEach((bar,i)=>{
-          bar.style.height = (4 + Math.random()*14)+'px';
-          bar.style.background = 'var(--green)';
-        });
-      }
+      // Speech events indicate recognition activity, not measured mic volume.
+      els.audioViz.classList.add('active');
+      clearTimeout(speechActivityTimer);
+      speechActivityTimer=setTimeout(()=>els.audioViz.classList.remove('active'), 700);
 
       // Show what we're hearing in status
       if(els.stCurText) els.stCurText.textContent = text.substring(text.length-40);
 
       // Position is now driven by the Rust tracker via 'track-update' (below);
       // this listener only powers the visualizer and the "hearing" status.
-    });
+    })) return;
 
     // Drive the highlight from the canonical Rust tracker (replaces the old
     // last-6-words JS matcher). Forward-only so a revised hypothesis cannot jump
     // the cursor backward; the tracker already de-flickers partials.
-    trackUnlisten = await listen('track-update', (event)=>{
+    if(!await subscribe('track-update', (event)=>{
       const u = event.payload;
       if(u.matched) noteScript();
       if(state!=='run') return;
@@ -441,40 +510,63 @@ async function startAppleSpeech(){
       }
       const cue = u.state === 'pause' ? 'pause' : null;
       if(cue !== liveCue){ liveCue = cue; turnEnded = false; updateSt(); }
-    });
+    })) return;
 
     // Call audio: show when the patient is talking, and when they've finished
     // answering at a pause point (a silence-based end-of-turn).
-    otherUnlisten = await listen('other-party', (event)=>{
+    if(!await subscribe('other-party', (event)=>{
       otherSpeaking = !!event.payload;
       if(!otherSpeaking && liveCue === 'pause') turnEnded = true;
       updateSt();
-    });
+    })) return;
 
     // Non-fatal helper problems (e.g. call-audio permission): tell the user,
     // keep tracking.
-    listen('speech-warning', (event)=>{ showErr(event.payload); }).then(()=>{});
+    if(!await subscribe('speech-warning', (event)=>{ showErr(event.payload); })) return;
 
     // Listen for errors
-    listen('speech-error', (event)=>{
-      showErr('Speech recognition: ' + event.payload);
-      audioMode = false;
-      startScroll(); // fallback
-    }).then(()=>{});
+    if(!await subscribe('speech-error', (event)=>{
+      fallBackToTimer(event.payload);
+    })) return;
+
+    speechStopRequired=true;
+    await invoke('start_speech');
+    if(epoch!==speechEpoch) return;
+    speechStarting=false;
+    updateSt();
 
   }catch(e){
-    audioMode = false;
-    startScroll(); // fallback to timer
+    if(epoch===speechEpoch) fallBackToTimer(e);
   }
 }
 
-function stopAppleSpeech(){
-  if(speechUnlisten){speechUnlisten();speechUnlisten=null}
-  if(trackUnlisten){trackUnlisten();trackUnlisten=null}
-  if(otherUnlisten){otherUnlisten();otherUnlisten=null}
+function fallBackToTimer(error){
+  timerFallbackUsed=true;
+  stopAppleSpeech();
+  showErr('Voice tracking stopped: '+error+'. Timer mode does not verify delivery.');
+  updateSt();
+  startScroll();
+}
+
+function stopAppleSpeech({strict=false}={}){
+  speechEpoch++;
+  speechListeners.splice(0).forEach(off=>off());
+  clearTimeout(speechActivityTimer);
+  els.audioViz.classList.remove('active');
   otherSpeaking = false; liveCue = null; turnEnded = false;
-  invoke('stop_speech').catch(()=>{});
-  audioMode = false;
+  audioMode=false; speechStarting=false;
+  // Retain failed shutdown state so neither reset nor a new script can hide
+  // a helper that has not yet confirmed it stopped. Concurrent callers join it.
+  speechStopRequired=true;
+  if(!pendingSpeechStop){
+    const stopped=invoke('stop_speech').then(()=>{
+      speechStopRequired=false;
+    }).finally(()=>{
+      if(pendingSpeechStop===stopped) pendingSpeechStop=null;
+    });
+    pendingSpeechStop=stopped;
+  }
+  return strict?pendingSpeechStop:pendingSpeechStop.catch(()=>{});
 }
 
 // ── Pause / resume ──
@@ -482,167 +574,128 @@ function toggle(){
   if(state==='run'){
     state='pause';
     if(!audioMode) stopScroll();
-    // In audio mode, VAD events just won't advance while paused
+    // Pause holds the prompter; speech recognition and recording continue.
   }
   else if(state==='pause'||state==='wait'){
     state='run';
     if(items[idx]?.kind==='p' && idx<items.length-1){idx++;highlight()}
     if(!audioMode) startScroll();
-    vadWordAccum = 0; // reset accumulator on resume
   }
   else if(state==='loaded'){startSession();return}
   updateSt();
 }
 
 // ── End session ──
-function endSession(){
-  state='done'; stopScroll(); stopClock(); stopAppleSpeech(); stopFollow(); stopIdleWatch();
+let verificationListeners = [];
+function stopVerificationListeners(){ verificationListeners.splice(0).forEach(off=>off()); }
+
+async function endSession(){
+  if(!['run','pause','wait'].includes(state)) return;
+  state='done'; reportPending=true;
+  const epoch=sessionEpoch;
+  stopScroll(); stopClock(); stopFollow(); stopIdleWatch();
+  const stopped=stopAppleSpeech({strict:true});
   updateSt();
   const elapsed = t0 ? Math.floor((Date.now()-t0)/1000) : 0;
-  const card = els.doneCard;
-  while(card.firstChild) card.removeChild(card.firstChild);
-
-  const h = document.createElement('h2');
-  h.textContent = 'Great consultation'; card.appendChild(h);
-
-  const sub = document.createElement('div');
-  sub.className='sub';
-  sub.textContent = fmt(elapsed)+' total'; card.appendChild(sub);
-
-  const rows = document.createElement('div');
-  rows.className='card-rows';
-  script.sections.forEach((sec,i)=>{
-    const row=document.createElement('div'); row.className='card-row';
-    const ck=document.createElement('span'); ck.className='ck';
-    const reached = items.some(it=>it.section===i && items.indexOf(it)<=idx);
-    ck.textContent = reached?'\u2713':'\u2013';
-    if(!reached) ck.style.opacity='.3';
-    else ck.style.color='var(--green)';
-    const nm=document.createElement('span'); nm.className='nm'; nm.textContent=sec.name;
-    const tm=document.createElement('span'); tm.className='tm';
-    if(secTimes[i]!==undefined){
-      const next=secTimes[i+1]||Date.now();
-      tm.textContent=fmt(Math.floor((next-secTimes[i])/1000));
-    }
-    row.appendChild(ck); row.appendChild(nm); row.appendChild(tm);
-    rows.appendChild(row);
+  const endedAt=Date.now();
+  const sectionTimesMap={};
+  // A revisit or skipped section must never produce a negative duration.
+  const entered=Object.entries(secTimes).sort((a,b)=>a[1]-b[1]);
+  entered.forEach(([i,startedAt],n)=>{
+    const next=entered[n+1]?.[1]??endedAt;
+    sectionTimesMap[script.sections[i].name]=Math.max(0,Math.floor((next-startedAt)/1000));
   });
-  card.appendChild(rows);
+  const card=els.doneCard;
+  card.replaceChildren();
+  const h=document.createElement('h2'); h.id='reportTitle'; h.textContent='Session report'; card.appendChild(h);
+  const sub=document.createElement('div'); sub.className='sub'; sub.textContent=fmt(elapsed)+' total'; card.appendChild(sub);
+  const badge=document.createElement('div'); badge.className='report-source'; badge.textContent='Preparing report…'; card.appendChild(badge);
+  const note=document.createElement('p'); note.className='report-note'; note.setAttribute('role','status'); card.appendChild(note);
+  const rows=document.createElement('div'); rows.className='card-rows'; card.appendChild(rows);
+  const saved=document.createElement('p'); saved.className='report-path'; card.appendChild(saved);
+  const btn=document.createElement('button'); btn.className='btn-primary'; btn.textContent='Saving…'; btn.disabled=true;
+  btn.addEventListener('click',resetAll); card.appendChild(btn);
+  show('doneOverlay'); card.focus();
 
-  // Save compliance report
-  const covered = [];
-  const skipped = [];
-  const sectionTimesMap = {};
-  let wordsDelivered = 0;
-  let pauseReached = 0;
-  const pauseTotal = items.filter(it=>it.kind==='p').length;
-
-  script.sections.forEach((sec,i)=>{
-    const reached = items.some(it=>it.section===i && items.indexOf(it)<=idx);
-    if(reached) covered.push(sec.name); else skipped.push(sec.name);
-    if(secTimes[i]!==undefined){
-      const next = secTimes[i+1]||Date.now();
-      sectionTimesMap[sec.name] = Math.floor((next-secTimes[i])/1000);
-    }
-  });
-  for(let i=0;i<idx&&i<items.length;i++){
-    wordsDelivered += items[i].words||0;
-    if(items[i].kind==='p') pauseReached++;
-  }
-
-  const jsReport = {
-    script_title: script.title,
-    script_version: script.version || null,
-    sections_covered: covered,
-    sections_skipped: skipped,
-    duration_secs: elapsed,
-    section_times: sectionTimesMap,
-    pause_points_reached: pauseReached,
-    pause_points_total: pauseTotal,
-    branches_taken: branchDecisions,
-    total_words: script.word_count,
-    words_delivered: wordsDelivered
-  };
-  function showSavedPath(path){
-    const saved = document.createElement('div');
-    saved.style.cssText = 'font-size:12px;color:var(--text-muted);margin-top:12px';
-    saved.textContent = 'Report saved to '+path;
-    card.appendChild(saved);
-  }
-  // Prefer the speech-verified report from the Rust tracker; fall back to the
-  // cursor-derived JS report if tracking was not initialized this session.
-  // Brief delay first so any in-flight recognized line is fed to the tracker
-  // before we build the report (stop_speech flips a flag; it does not join).
-  setTimeout(()=>{
-  invoke('finish_tracking', { durationSecs: elapsed, sectionTimes: sectionTimesMap }).then(async rep => {
-    showSavedPath(rep.saved_path);
-    renderCoaching(rep.coaching);
-    const note = document.createElement('div');
-    note.style.cssText = 'font-size:12px;color:var(--text-muted);margin-top:6px';
-    note.textContent = Math.round(rep.adherence_pct)+'% of the script delivered (live tracking).';
-    card.appendChild(note);
-    if(!rep.verifying) return;
-    note.textContent += ' Checking against the full recording\u2026';
-    const offs = [];
-    const done = () => { offs.forEach(f=>f()); };
-    offs.push(await listen('verification-complete', (event)=>{
-      const v = event.payload;
-      note.textContent = 'Checked against the full recording: '+Math.round(v.adherence_pct)+'% of the script delivered. Report updated.';
-      const old = card.querySelector('.coach'); if(old) old.remove();
-      renderCoaching(v.coaching);
-      done();
-    }));
-    offs.push(await listen('verification-failed', (event)=>{
-      note.textContent += ' Couldn\u2019t check the recording ('+event.payload+'); the live report stands.';
-      done();
-    }));
-  }).catch(()=>{
-    invoke('save_compliance', { report: jsReport }).then(showSavedPath).catch(e=>{showErr('Compliance report not saved: '+e)});
-    invoke('get_coaching', { report: jsReport }).then(renderCoaching).catch(e=>{console.warn('coaching:',e)});
-  });
-  }, 120);
-
-  // Coaching renderer (used by both the speech-verified and fallback paths).
-  function renderCoaching(insights){
-    if(!insights || !insights.length) return;
-    const coachDiv = document.createElement('div');
-    coachDiv.className = 'coach';
-    coachDiv.style.cssText = 'text-align:left;margin-bottom:20px;padding:12px;background:var(--bg);border-radius:var(--radius-sm);border:1px solid var(--border-subtle)';
-
-    const coachTitle = document.createElement('div');
-    coachTitle.style.cssText = 'font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted);margin-bottom:8px';
-    coachTitle.textContent = 'Coaching';
-    coachDiv.appendChild(coachTitle);
-
-    const colors = {praise:'var(--green)',warning:'var(--amber)',critical:'var(--red)',info:'var(--text-muted)'};
-    const icons = {praise:'\u2713',warning:'\u26A0',critical:'\u2718',info:'\u2139'};
-
-    insights.slice(0,5).forEach(i => {
-      const row = document.createElement('div');
-      row.style.cssText = 'font-size:13px;padding:4px 0;display:flex;gap:8px;align-items:start';
-      const icon = document.createElement('span');
-      icon.style.cssText = 'color:'+colors[i.severity]+';flex-shrink:0;width:16px;text-align:center';
-      icon.textContent = icons[i.severity]||'';
-      const text = document.createElement('span');
-      text.style.color = 'var(--text-secondary)';
-      text.textContent = i.message;
-      row.appendChild(icon);
-      row.appendChild(text);
-      coachDiv.appendChild(row);
+  function renderReport(rep){
+    if(epoch!==sessionEpoch) return;
+    rows.replaceChildren();
+    const covered=new Set(rep.sections_covered||[]);
+    script.sections.forEach(sec=>{
+      const row=document.createElement('div'); row.className='card-row';
+      const marker=document.createElement('span'); marker.className='ck';
+      marker.textContent=covered.has(sec.name)?'●':'·'; marker.setAttribute('aria-hidden','true');
+      if(covered.has(sec.name)) marker.style.color='var(--green)';
+      const name=document.createElement('span'); name.className='nm'; name.textContent=sec.name;
+      const evidence=document.createElement('span'); evidence.className='tm';
+      evidence.textContent=covered.has(sec.name)?'Speech detected':'No speech evidence';
+      row.append(marker,name,evidence); rows.appendChild(row);
     });
-
-    // Insert before the Done button
-    const doneBtn = card.querySelector('.btn-primary');
-    if(doneBtn) card.insertBefore(coachDiv, doneBtn);
-    else card.appendChild(coachDiv);
+    badge.textContent=rep.verified_by_recording?'Recording checked':rep.verifying?'Checking full recording':'Live speech estimate';
+    badge.dataset.state=rep.verified_by_recording?'verified':rep.verifying?'checking':'live';
+    note.textContent=Math.round(rep.adherence_pct)+'% estimated script coverage ('+rep.words_delivered+' / '+rep.total_words+' words in covered lines). '+
+      (rep.verifying?'The live estimate may change after the recording is checked.':'Sections with speech evidence may still have missed lines. Review the saved report.');
+    if(timerFallbackUsed&&!rep.verified_by_recording) note.textContent+=' Timer scrolling was used; cursor movement does not count as delivery.';
+    saved.textContent=rep.saved_path?'Report saved to '+rep.saved_path:'';
+    renderCoaching(rep.coaching);
   }
 
-  const btn=document.createElement('button');
-  btn.className='btn-primary'; btn.textContent='Done';
-  btn.addEventListener('click', resetAll);
-  card.appendChild(btn);
+  function renderCoaching(insights){
+    card.querySelector('.coach')?.remove();
+    if(!insights?.length) return;
+    const coach=document.createElement('div'); coach.className='coach';
+    const title=document.createElement('h3'); title.textContent='Coaching'; coach.appendChild(title);
+    insights.slice(0,5).forEach(insight=>{
+      const row=document.createElement('div'); row.className='coaching-insight';
+      const severity=document.createElement('span'); severity.className='coaching-severity'; severity.textContent=insight.severity+': ';
+      const text=document.createElement('span'); text.textContent=insight.message;
+      row.append(severity,text);
+      if(insight.advice){ const advice=document.createElement('p'); advice.className='coaching-advice'; advice.textContent=insight.advice; row.appendChild(advice); }
+      coach.appendChild(row);
+    });
+    card.insertBefore(coach,saved);
+  }
 
-  show('doneOverlay');
+  let initialReport=null;
+  const earlyEvents=[];
+  function verificationEvent(kind,payload){
+    if(epoch!==sessionEpoch) return;
+    if(!initialReport){ earlyEvents.push([kind,payload]); return; }
+    // Each verification belongs to a saved report, including failed checks.
+    if(payload.saved_path!==initialReport.saved_path) return;
+    if(kind==='complete') renderReport(payload);
+    else{
+      badge.textContent='Recording check failed'; badge.dataset.state='failed';
+      note.textContent='The live speech estimate is unchanged. Could not check the recording: '+payload.error;
+    }
+    stopVerificationListeners();
+  }
+
+  try{
+    await stopped;
+    if(!trackingReady){
+      badge.textContent='Timer mode · no speech evidence';
+      badge.dataset.state='unavailable';
+      note.textContent='This session used reading position only. No delivery coverage or compliance report was generated.';
+      return;
+    }
+    stopVerificationListeners();
+    // Listen before invoking finish_tracking; short recordings may be checked
+    // before its response reaches this webview.
+    verificationListeners.push(await listen('verification-complete', e=>verificationEvent('complete',e.payload)));
+    verificationListeners.push(await listen('verification-failed', e=>verificationEvent('failed',e.payload)));
+    initialReport=await invoke('finish_tracking',{durationSecs:elapsed,sectionTimes:sectionTimesMap});
+    renderReport(initialReport);
+    earlyEvents.forEach(([kind,payload])=>verificationEvent(kind,payload));
+    if(!initialReport.verifying) stopVerificationListeners();
+  }catch(e){
+    stopVerificationListeners();
+    badge.textContent='Report unavailable'; badge.dataset.state='failed';
+    note.textContent='Could not finish the speech report: '+e+'. Reading position was not substituted for delivery evidence.';
+  }finally{
+    reportPending=false;
+    btn.disabled=false; btn.textContent='Done';
+  }
 }
 
 // ── Navigation ──
@@ -676,7 +729,7 @@ function jumpSec(si){
     if(!secTimes[si]) secTimes[si]=Date.now();
     highlight();
     const el=$('sec-'+si);
-    if(el) el.scrollIntoView({behavior:'smooth'});
+    if(el) el.scrollIntoView({behavior:reducedMotion()?'auto':'smooth'});
   }
 }
 
@@ -738,9 +791,12 @@ function buildTP(){
         el.options.forEach((opt,oi)=>{
           const btn=document.createElement('button');
           btn.className='branch-opt'; btn.textContent=opt.label; btn.tabIndex=0;
+          btn.setAttribute('aria-pressed','false');
+          btn.setAttribute('aria-controls','branch-'+branchIdx+'-'+oi);
           btn.addEventListener('click',()=>{
-            opts.querySelectorAll('.branch-opt').forEach(b=>b.classList.remove('sel'));
+            opts.querySelectorAll('.branch-opt').forEach(b=>{b.classList.remove('sel');b.setAttribute('aria-pressed','false')});
             btn.classList.add('sel');
+            btn.setAttribute('aria-pressed','true');
             c.querySelectorAll('.branch-body').forEach(b=>b.classList.remove('show'));
             const target=c.querySelector('[data-bo="'+si+'-'+oi+'"]');
             if(target) target.classList.add('show');
@@ -759,6 +815,7 @@ function buildTP(){
         el.options.forEach((opt,oi)=>{
           const body=document.createElement('div');
           body.className='branch-body'; body.dataset.bo=si+'-'+oi;
+          body.id='branch-'+branchIdx+'-'+oi;
           opt.sentences.forEach(s=>{
             const sp=document.createElement('span');
             sp.className='s up'; sp.dataset.t=t++; sp.textContent=s.text+' ';
@@ -782,6 +839,8 @@ function highlight(){
     if(i<idx) el.classList.add('past');
     else if(i===idx) el.classList.add(branchCur ? 'past' : 'cur');
     else el.classList.add('up');
+    if(i===idx&&!branchCur) el.setAttribute('aria-current','true');
+    else el.removeAttribute('aria-current');
   });
 
   document.querySelectorAll('.pause[data-i]').forEach(el=>{
@@ -828,7 +887,10 @@ function followBranch(u){
   if(!body.classList.contains('show')){
     c.querySelectorAll('.branch-body').forEach(b=>b.classList.toggle('show', b===body));
     const oi = +body.dataset.bo.split('-')[1];
-    c.querySelectorAll('.branch-opt').forEach((b,i)=>b.classList.toggle('sel', i===oi));
+    c.querySelectorAll('.branch-opt').forEach((b,i)=>{
+      b.classList.toggle('sel', i===oi);
+      b.setAttribute('aria-pressed',String(i===oi));
+    });
     branchDecisions[c.querySelector('.branch-q').textContent] = u.option_label;
   }
   let seen = false;
@@ -867,6 +929,8 @@ function resumeFollow(){ manualUntil = 0; }
 let eyeLine = 0.10;
 // Text column width (px); , and . narrow / widen it.
 let colWidth = 460;
+const motionPreference=window.matchMedia?.('(prefers-reduced-motion: reduce)');
+function reducedMotion(){ return motionPreference?.matches??false; }
 function applyCol(){ els.tp.style.setProperty('--col', colWidth+'px'); }
 function moveCol(d){
   colWidth = Math.min(1200, Math.max(280, colWidth + d));
@@ -919,7 +983,7 @@ function scrollFollow(){
     const targetY=eyeY();
     const delta=curRect.top - targetY;          // current line vs the read-line
     if(Math.abs(delta) > 0.5){
-      tp.scrollTop += delta * 0.14;             // ease ~14% of the gap per frame
+      tp.scrollTop += delta * (reducedMotion()?1:0.14);
     }
   }
   scrollRAF=requestAnimationFrame(scrollFollow);
@@ -935,6 +999,8 @@ function updateNav(){
     b.classList.remove('active','done');
     if(i===si) b.classList.add('active');
     else if(i<si) b.classList.add('done');
+    if(i===si) b.setAttribute('aria-current','step');
+    else b.removeAttribute('aria-current');
   });
 }
 
@@ -944,6 +1010,8 @@ function updateProgress(){
   for(let i=0;i<idx&&i<items.length;i++) read+=items[i].words||0;
   const pct=script.word_count?Math.round(read/script.word_count*100):0;
   els.progFill.style.width=pct+'%';
+  els.positionProgress.setAttribute('aria-valuenow',String(pct));
+  els.positionProgress.setAttribute('aria-valuetext',read+' of '+script.word_count+' words by reading position, not verified coverage');
   els.stWords.textContent=read+' / '+script.word_count;
 }
 
@@ -951,15 +1019,20 @@ function updateSt(){
   const d=els.dot, l=els.stLabel;
   d.className='dot';
   switch(state){
+    case 'starting': d.classList.add('wait'); l.textContent='Preparing voice tracking…'; break;
     case 'run':
+      if(speechStarting){ d.classList.add('wait'); l.textContent='Starting microphone…'; break; }
       if(audioMode && otherSpeaking){ d.classList.add('wait'); l.textContent='Patient speaking\u2026'; break; }
       if(audioMode && liveCue==='pause'){ d.classList.add('wait'); l.textContent=turnEnded?'Patient finished \u2014 continue':'Pause \u2014 let the patient respond'; break; }
-      d.classList.add('go'); l.textContent=audioMode?(vadSpeaking?'Tracking your voice':'Listening\u2026'):'Auto-scrolling\u2026'; break;
-    case 'pause': d.classList.add('stop'); l.textContent='Paused'; break;
+      d.classList.add('go'); l.textContent=audioMode?'Listening · voice tracking':'Timer mode · no speech tracking'; break;
+    case 'pause': d.classList.add('stop'); l.textContent=audioMode?'Paused · microphone still active':'Paused · timer mode'; break;
     case 'wait': d.classList.add('wait'); l.textContent='Waiting for response\u2026'; break;
     case 'done': d.classList.add('fin'); l.textContent='Complete'; break;
     default: l.textContent='Ready';
   }
+  els.speedSlider.disabled=audioMode||state==='starting';
+  els.speedSlider.title=audioMode?'Your voice controls scrolling. Speed applies only in timer mode.':'Timer scrolling speed';
+  els.btnPause.textContent=state==='pause'||state==='wait'?'Resume':'Pause';
   updateEnd(); updateGuide();
 }
 
@@ -997,7 +1070,27 @@ function setFont(d){
 }
 
 // ── Help ──
-function toggleHelp(){els.helpOverlay.classList.toggle('show')}
+let helpReturnFocus=null;
+function toggleHelp(){
+  const opening=!els.helpOverlay.classList.contains('show');
+  if(opening){ helpReturnFocus=document.activeElement; show('helpOverlay'); $('btnHelpClose').focus(); }
+  else{ hide('helpOverlay'); if(helpReturnFocus?.isConnected) helpReturnFocus.focus(); }
+}
+
+function updateModalInert(){
+  const modal=els.helpOverlay.classList.contains('show')?els.helpOverlay:
+    els.doneOverlay.classList.contains('show')?els.doneOverlay:null;
+  Array.from(document.body.children).forEach(el=>{ if(el.tagName!=='SCRIPT') el.inert=!!modal&&el!==modal; });
+}
+
+function trapDialogTab(e,dialog){
+  if(e.key!=='Tab') return;
+  const controls=Array.from(dialog.querySelectorAll('button:not([disabled]),input:not([disabled]),a[href],[tabindex="0"]'));
+  if(!controls.length){ e.preventDefault(); return; }
+  const first=controls[0], last=controls[controls.length-1];
+  if(e.shiftKey&&(document.activeElement===first||!controls.includes(document.activeElement))){ e.preventDefault();last.focus(); }
+  else if(!e.shiftKey&&(document.activeElement===last||!controls.includes(document.activeElement))){ e.preventDefault();first.focus(); }
+}
 
 // ── Error ──
 function showErr(msg){
@@ -1005,6 +1098,7 @@ function showErr(msg){
   while(e.firstChild) e.removeChild(e.firstChild);
   const t=document.createElement('span'); t.textContent=msg; t.style.flex='1';
   const x=document.createElement('button'); x.className='dismiss'; x.textContent='\u2715';
+  x.setAttribute('aria-label','Dismiss message');
   x.addEventListener('click', hideErr);
   e.appendChild(t); e.appendChild(x);
   e.classList.add('show');
@@ -1012,8 +1106,8 @@ function showErr(msg){
 function hideErr(){els.err.classList.remove('show')}
 
 // ── Utilities ──
-function show(id){const e=els[id];e.classList.add('show');e.classList.remove('hide')}
-function hide(id){const e=els[id];e.classList.remove('show');e.classList.add('hide')}
+function show(id){const e=els[id];e.classList.add('show');e.classList.remove('hide');if(id==='helpOverlay'||id==='doneOverlay')updateModalInert()}
+function hide(id){const e=els[id];e.classList.remove('show');e.classList.add('hide');if(id==='helpOverlay'||id==='doneOverlay')updateModalInert()}
 function fmt(sec){const m=Math.floor(sec/60),s=sec%60;return m+':'+String(s).padStart(2,'0')}
 
 // ── Settings persistence ──
@@ -1026,7 +1120,7 @@ async function restoreSettings(){
     if(s.speed && s.speed !== speed){
       speed=s.speed; els.speedSlider.value=speed; els.speedVal.textContent=speed+' wpm';
     }
-    if(s.always_on_top){ pinned=true; els.pinBtn.classList.add('on'); }
+    if(s.always_on_top){ pinned=true; els.pinBtn.classList.add('on'); els.pinBtn.setAttribute('aria-pressed','true'); }
     if(typeof s.eye_line === 'number') eyeLine = s.eye_line;
     if(typeof s.col_width === 'number') colWidth = s.col_width;
     applyCol();
@@ -1050,9 +1144,13 @@ async function persistSettings(){
 }
 
 async function togglePin(){
-  pinned = !pinned;
-  els.pinBtn.classList.toggle('on', pinned);
-  try{ await invoke('set_always_on_top', {onTop: pinned}); }catch(e){}
+  const next=!pinned;
+  try{
+    await invoke('set_always_on_top', {onTop: next});
+    pinned=next;
+    els.pinBtn.classList.toggle('on',pinned);
+    els.pinBtn.setAttribute('aria-pressed',String(pinned));
+  }catch(e){showErr('Could not change always-on-top: '+e)}
 }
 
 // ── Recent scripts + watched folder ──
@@ -1083,7 +1181,8 @@ async function loadRecents(){
   container.appendChild(title);
 
   scripts.slice(0,6).forEach(s=>{
-    const item=document.createElement('div');
+    const item=document.createElement('button');
+    item.type='button';
     item.className='recent-item';
     item.addEventListener('click', async ()=>{
       try{
@@ -1112,8 +1211,8 @@ async function loadRecents(){
 async function bindSessionOptions(){
   let st = {};
   try{ st = await invoke('load_settings'); }catch(e){}
-  const map = {optVerify:'verify_with_recording', optKeepAudio:'keep_session_audio', optOther:'detect_other_party'};
-  const defaults = {verify_with_recording:true, keep_session_audio:false, detect_other_party:false};
+  const map = {optVerify:'verify_with_recording', optKeepAudio:'keep_session_audio', optOther:'detect_other_party', optDiagnostics:'record_diagnostics'};
+  const defaults = {verify_with_recording:true, keep_session_audio:false, detect_other_party:false, record_diagnostics:false};
   Object.entries(map).forEach(([id,key])=>{
     const el = document.getElementById(id);
     if(!el) return;
@@ -1155,19 +1254,33 @@ $('updateBtn').addEventListener('click', async ()=>{
 
 // ── Keyboard ──
 document.addEventListener('keydown', e=>{
-  if((e.metaKey||e.ctrlKey)&&e.key==='v'&&!script){e.preventDefault();pasteScript();return}
-  if((e.metaKey||e.ctrlKey)&&e.key==='o'){e.preventDefault();openFile();return}
   if(els.helpOverlay.classList.contains('show')){
-    if(e.key==='Escape'||e.key==='h'||e.key==='H') toggleHelp();
+    if(e.key==='Escape'){e.preventDefault();toggleHelp();}
+    else trapDialogTab(e,els.helpOverlay);
     return;
   }
+  if(els.doneOverlay.classList.contains('show')){
+    if(e.key==='Escape'&&!reportPending){e.preventDefault();resetAll();}
+    else trapDialogTab(e,els.doneOverlay);
+    return;
+  }
+  if(e.metaKey||e.ctrlKey){
+    if(e.key.toLowerCase()==='v'&&!script){e.preventDefault();pasteScript();}
+    else if(e.key.toLowerCase()==='o'){e.preventDefault();openFile();}
+    return;
+  }
+  // Preserve native button activation, range arrows, checkbox toggles and Tab.
+  // Global shortcuts apply when the reader is focused on the page itself.
+  if(e.altKey||e.isComposing) return;
+  if(e.key!=='Escape'&&e.target?.closest?.('input,textarea,select,button,a,[contenteditable="true"]')) return;
+  if(e.repeat&&[' ','Escape'].includes(e.key)) return;
   switch(e.key){
     case ' ':e.preventDefault();if(script)toggle();break;
-    case 'ArrowDown':e.preventDefault();if(script&&state!=='idle'){
-      if(state==='run')stopScroll(); advance(); if(state==='run')startScroll();
+    case 'ArrowDown':e.preventDefault();if(script&&['loaded','run','pause','wait'].includes(state)){
+      advance(); if(state==='run'&&!audioMode)startScroll();
     }break;
-    case 'ArrowUp':e.preventDefault();if(script){
-      if(state==='run')stopScroll(); retreat(); if(state==='run')startScroll();
+    case 'ArrowUp':e.preventDefault();if(script&&['loaded','run','pause','wait'].includes(state)){
+      retreat(); if(state==='run'&&!audioMode)startScroll();
     }break;
     case 'Escape':
       if(state==='run'||state==='pause'||state==='wait') endSession();
@@ -1180,22 +1293,11 @@ document.addEventListener('keydown', e=>{
     case '[':moveEyeLine(-0.03);break;
     case ']':moveEyeLine(0.03);break;
     case 'm':case 'M':cycleHl();break;
-    case 'Tab':
-      e.preventDefault();
-      const bc=document.querySelector('.branch');
-      if(bc){
-        const os=bc.querySelectorAll('.branch-opt');
-        const s=bc.querySelector('.branch-opt.sel');
-        if(!s&&os.length) os[0].focus();
-        else if(s){const i=Array.from(os).indexOf(s);os[(i+1)%os.length].focus()}
-      }
-      break;
-    case 'Enter':
-      if(document.activeElement?.classList.contains('branch-opt')) document.activeElement.click();
-      break;
     default:
-      const n=parseInt(e.key);
-      if(n>=1&&n<=9&&script&&n<=script.sections.length) jumpSec(n-1);
+      if(/^[1-9]$/.test(e.key)&&script&&['loaded','run','pause','wait'].includes(state)){
+        const n=Number(e.key);
+        if(n<=script.sections.length) jumpSec(n-1);
+      }
   }
 });
 </script>

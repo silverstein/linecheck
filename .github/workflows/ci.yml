@@ -1,0 +1,98 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: "1"
+
+jobs:
+  core-and-ui:
+    name: Core and UI regression tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4
+        with:
+          toolchain: stable
+          components: clippy
+
+      - name: Cache Cargo
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-${{ runner.arch }}-cargo-ci-${{ hashFiles('Cargo.lock') }}
+
+      - name: Test platform-independent core
+        run: cargo test -p prompter-core --all-targets --locked
+
+      - name: Lint platform-independent core
+        run: cargo clippy -p prompter-core --all-targets --locked -- -D warnings
+
+      - name: Test frontend session behavior
+        # GitHub's hosted Linux image includes Node; these tests use only its
+        # built-in test runner and need no package install or browser service.
+        run: node --test crates/app/ui/*.test.cjs
+
+      - name: Test speech-helper process lifecycle
+        run: |
+          rustc --edition=2021 --test crates/app/src/process.rs -o "$RUNNER_TEMP/linecheck-process-tests"
+          "$RUNNER_TEMP/linecheck-process-tests"
+
+  native-macos:
+    name: Native macOS build and tests
+    runs-on: macos-latest
+    timeout-minutes: 30
+    env:
+      MACOSX_DEPLOYMENT_TARGET: "13.0"
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4
+        with:
+          toolchain: stable
+
+      - name: Cache Cargo
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-${{ runner.arch }}-cargo-ci-${{ hashFiles('Cargo.lock') }}
+
+      - name: Compile native speech helper
+        run: |
+          set -euo pipefail
+          triple="$(rustc -vV | sed -n 's/^host: //p')"
+          mkdir -p crates/app/binaries
+          swiftc -O -target "$(uname -m)-apple-macos13.0" scripts/speech-recognizer.swift \
+            -o "crates/app/binaries/speech-recognizer-$triple"
+
+      - name: Compile and test the desktop app
+        # Exercises Rust/Tauri integration without signing credentials, a
+        # notarization account, a microphone, or an interactive app session.
+        run: cargo test -p prompter-app --locked
