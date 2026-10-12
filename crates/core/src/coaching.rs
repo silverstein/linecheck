@@ -54,7 +54,7 @@ pub fn analyze(report: &ComplianceReport) -> Vec<Insight> {
     analyze_overall(report, &mut insights);
 
     // Sort: critical first, praise last
-    insights.sort_by(|a, b| b.severity.cmp(&a.severity));
+    insights.sort_by_key(|insight| std::cmp::Reverse(insight.severity));
     insights
 }
 

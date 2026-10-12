@@ -19,7 +19,7 @@ pub use checklist::{
 pub use compliance::{write_private, ComplianceReport, DeliveryStats};
 pub use error::{ParseError, PrompterError};
 pub use script::{BranchOption, Directive, Frontmatter, Script, Section, Sentence};
-pub use realign::{realign, Realignment};
+pub use realign::{realign, try_realign, Realignment, RealignmentError};
 pub use session::{SessionRecorder, TranscriptLine};
 pub use speech::{recent_words, MockSpeechProvider, RecognizedWord, SpeechProvider, SpeechUpdate};
 pub use tracker::{BranchChoice, ScriptTracker, TimelineStep, TrackState, TrackUpdate};

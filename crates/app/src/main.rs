@@ -2,7 +2,7 @@
 
 use prompter_core::script::{self, Directive, Element};
 use prompter_core::{
-    realign, recent_words, write_private, ScriptTracker, SessionRecorder, SpeechUpdate,
+    recent_words, try_realign, write_private, ScriptTracker, SessionRecorder, SpeechUpdate,
     TrackState, TrackUpdate,
 };
 use serde::Serialize;
@@ -12,6 +12,8 @@ use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use tauri::{Emitter, Manager};
+
+mod process;
 
 // ── Serializable types for the frontend ──
 
@@ -126,9 +128,9 @@ static AUDIO_STOP: std::sync::LazyLock<Arc<AtomicBool>> =
 /// PID of the running speech helper (0 = none), so stop can signal it directly
 /// instead of waiting for its next output line.
 static SPEECH_PID: AtomicU32 = AtomicU32::new(0);
-/// True while a post-session recording check runs (an update must not restart
+/// Number of post-session recording checks running (an update must not restart
 /// the app under it).
-static VERIFYING: AtomicBool = AtomicBool::new(false);
+static VERIFYING: AtomicU32 = AtomicU32::new(0);
 /// True while the other party (call audio) is speaking.
 static OTHER_SPEAKING: AtomicBool = AtomicBool::new(false);
 
@@ -164,19 +166,32 @@ fn data_dir() -> std::path::PathBuf {
 }
 
 /// Create a private per-session folder under ~/.linecheck/sessions.
-fn new_session_dir() -> Option<std::path::PathBuf> {
+fn new_session_dir() -> Result<std::path::PathBuf, std::io::Error> {
+    static NEXT_SESSION: AtomicU32 = AtomicU32::new(0);
     let stamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .ok()?
-        .as_millis();
-    let dir = data_dir().join("sessions").join(stamp.to_string());
-    fs::create_dir_all(&dir).ok()?;
+        .unwrap_or_default()
+        .as_nanos();
+    let root = data_dir().join("sessions");
+    let mut builder = fs::DirBuilder::new();
+    builder.recursive(true);
     #[cfg(unix)]
     {
-        use std::os::unix::fs::PermissionsExt;
-        let _ = fs::set_permissions(&dir, fs::Permissions::from_mode(0o700));
+        use std::os::unix::fs::DirBuilderExt;
+        builder.mode(0o700);
     }
-    Some(dir)
+    builder.create(&root)?;
+    // Never reuse an existing session folder, even for simultaneous starts.
+    builder.recursive(false);
+    loop {
+        let id = NEXT_SESSION.fetch_add(1, Ordering::Relaxed);
+        let dir = root.join(format!("{stamp}-{}-{id}", std::process::id()));
+        match builder.create(&dir) {
+            Ok(()) => return Ok(dir),
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(e) => return Err(e),
+        }
+    }
 }
 
 // ── Tauri commands ──
@@ -276,6 +291,9 @@ fn recording_path() -> std::path::PathBuf {
 /// Start a tracking session for `text` (the .script.md source).
 #[tauri::command]
 fn init_tracking(state: tauri::State<TrackingState>, text: String) -> Result<(), String> {
+    if AUDIO_RUNNING.load(Ordering::SeqCst) {
+        return Err("Stop the current microphone session before starting another.".into());
+    }
     let mut slot = state.0.lock().map_err(|_| "tracking state poisoned")?;
     // Clear any prior session FIRST: a failed init (or a new session) must not
     // leave a stale tracker that later speech could feed into. Its folder goes
@@ -291,20 +309,30 @@ fn init_tracking(state: tauri::State<TrackingState>, text: String) -> Result<(),
     // tight a window froze the cursor once it fell outside it.)
     tracker.set_window_radius(10);
     // Start a fresh ASR recording for offline replay/eval.
-    let recording = {
+    let settings = load_settings();
+    let recording = if settings.record_diagnostics {
         let path = recording_path();
         if let Some(parent) = path.parent() {
             let _ = fs::create_dir_all(parent);
         }
         let header = serde_json::json!({ "type": "script", "source": text }).to_string();
-        fs::write(&path, format!("{header}\n")).ok().map(|_| path)
+        write_private(&path, &format!("{header}\n"))
+            .ok()
+            .map(|_| path)
+    } else {
+        None
     };
-    let session_dir = new_session_dir();
+    let session_dir = Some(
+        new_session_dir().map_err(|e| format!("Could not create private session folder: {e}"))?,
+    );
     if let Some(dir) = &session_dir {
         // The language model learns what will actually be said: sentences with
         // variables filled in (drug names, not "{{supplements}}"), pause
         // questions, and every branch option. One phrase per line.
-        let _ = write_private(&dir.join("script.md"), &spoken_phrases(&parsed));
+        if let Err(e) = write_private(&dir.join("script.md"), &spoken_phrases(&parsed)) {
+            let _ = fs::remove_dir_all(dir);
+            return Err(format!("Could not save the session script: {e}"));
+        }
     }
     OTHER_SPEAKING.store(false, Ordering::SeqCst);
     *slot = Some(TrackingSession {
@@ -463,6 +491,9 @@ fn finish_tracking(
     duration_secs: u64,
     section_times: HashMap<String, u64>,
 ) -> Result<ComplianceOut, String> {
+    if AUDIO_RUNNING.load(Ordering::SeqCst) {
+        return Err("Stop the microphone before finishing the session.".into());
+    }
     // Take (and clear) the session, then release the lock before disk I/O so the
     // speech reader is never blocked and a stale session can't leak forward.
     let mut session = {
@@ -499,17 +530,24 @@ fn finish_tracking(
     match audio {
         Some(audio) => {
             let session_dir = session.session_dir.clone();
-            VERIFYING.store(true, Ordering::SeqCst);
+            let keep_audio = load_settings().keep_session_audio;
+            VERIFYING.fetch_add(1, Ordering::SeqCst);
             std::thread::spawn(move || {
                 let started = Instant::now();
-                let result = verify_with_recording(&mut session, &audio, duration_secs, &section_times, &path);
-                VERIFYING.store(false, Ordering::SeqCst);
+                let result = verify_with_recording(
+                    &mut session,
+                    &audio,
+                    duration_secs,
+                    &section_times,
+                    &path,
+                );
                 log_verification(duration_secs, started.elapsed().as_secs_f32(), &result);
-                if !load_settings().keep_session_audio {
+                if !keep_audio {
                     if let Some(d) = session_dir {
                         let _ = fs::remove_dir_all(d);
                     }
                 }
+                VERIFYING.fetch_sub(1, Ordering::SeqCst);
                 match result {
                     Ok(report) => {
                         let _ = app.emit(
@@ -519,7 +557,12 @@ fn finish_tracking(
                     }
                     Err(e) => {
                         eprintln!("[linecheck] verification failed: {e}");
-                        let _ = app.emit("verification-failed", e);
+                        let _ = app.emit(
+                            "verification-failed",
+                            serde_json::json!({
+                                "saved_path": path.to_string_lossy(), "error": e
+                            }),
+                        );
                     }
                 }
             });
@@ -539,7 +582,11 @@ fn finish_tracking(
 /// Append one line per verification pass to `~/.linecheck/verification.log`
 /// (outcome and timing only, never transcript text), so a failure the user
 /// dismissed can still be diagnosed.
-fn log_verification(duration_secs: u64, took_secs: f32, result: &Result<prompter_core::ComplianceReport, String>) {
+fn log_verification(
+    duration_secs: u64,
+    took_secs: f32,
+    result: &Result<prompter_core::ComplianceReport, String>,
+) {
     use std::io::Write;
     let path = data_dir().join("verification.log");
     let outcome = match result {
@@ -558,7 +605,10 @@ fn log_verification(duration_secs: u64, took_secs: f32, result: &Result<prompter
         opts.mode(0o600);
     }
     if let Ok(mut f) = opts.open(path) {
-        let _ = writeln!(f, "{stamp} session={duration_secs}s check={took_secs:.1}s {outcome}");
+        let _ = writeln!(
+            f,
+            "{stamp} session={duration_secs}s check={took_secs:.1}s {outcome}"
+        );
     }
 }
 
@@ -569,18 +619,23 @@ fn verify_with_recording(
     section_times: &HashMap<String, u64>,
     report_path: &std::path::Path,
 ) -> Result<prompter_core::ComplianceReport, String> {
-    // Let the live helper finish closing the recording.
-    let deadline = Instant::now() + std::time::Duration::from_secs(8);
-    while AUDIO_RUNNING.load(Ordering::SeqCst) && Instant::now() < deadline {
-        std::thread::sleep(std::time::Duration::from_millis(100));
-    }
     let helper = speech_helper_path();
     let mut cmd = std::process::Command::new(&helper);
     cmd.arg("--file").arg(audio);
     if let Some(dir) = &session.session_dir {
         cmd.arg("--script").arg(dir.join("script.md"));
     }
-    let output = cmd.output().map_err(|e| format!("could not run speech helper: {e}"))?;
+    let timeout = std::time::Duration::from_secs(
+        duration_secs
+            .saturating_mul(2)
+            .saturating_add(180)
+            .min(1800),
+    );
+    let output = process::output_with_timeout(&mut cmd, timeout)
+        .map_err(|e| format!("could not verify recording: {e}"))?;
+    if !output.status.success() {
+        return Err("Speech helper failed; live report preserved.".into());
+    }
     let stdout = String::from_utf8_lossy(&output.stdout);
     let parsed = stdout
         .lines()
@@ -588,7 +643,11 @@ fn verify_with_recording(
         .find(|v| v.get("file_text").is_some())
         .ok_or_else(|| {
             let err = String::from_utf8_lossy(&output.stderr).trim().to_string();
-            if err.is_empty() { "no transcript from recording".to_string() } else { err }
+            if err.is_empty() {
+                "no transcript from recording".to_string()
+            } else {
+                err
+            }
         })?;
     let text = parsed["file_text"].as_str().unwrap_or_default().to_string();
     let words = parsed["words"].as_u64().unwrap_or(0) as f32;
@@ -596,12 +655,13 @@ fn verify_with_recording(
         .as_array()
         .map(|a| a.iter().filter_map(|e| e.as_str()).collect())
         .unwrap_or_default();
-    if words == 0.0 && !errors.is_empty() {
+    if !errors.is_empty() {
         return Err(format!("speech recognizer: {}", errors.join("; ")));
     }
     let speaking_secs = parsed["speaking_secs"].as_f64().unwrap_or(0.0) as f32;
 
-    let realigned = realign(session.recorder.sentences(), &text);
+    let realigned = try_realign(session.recorder.sentences(), &text)
+        .map_err(|e| format!("Recording could not be aligned: {e}"))?;
     if !session.recorder.apply_realignment(&realigned) {
         return Err("recording too short or unclear to verify".into());
     }
@@ -614,7 +674,10 @@ fn verify_with_recording(
         .map_err(|e| format!("could not update report: {e}"))?;
     let _ = write_private(
         &report_path.with_extension("recording-transcript.md"),
-        &format!("# Full-recording transcript — {}\n\n{}\n", report.script_title, text),
+        &format!(
+            "# Full-recording transcript: {}\n\n{}\n",
+            report.script_title, text
+        ),
     );
     Ok(report)
 }
@@ -625,17 +688,16 @@ fn verify_with_recording(
 /// script and records the microphone for the post-session verification pass;
 /// with "detect the other party" on, it watches call audio too.
 #[tauri::command]
-fn start_speech(app: tauri::AppHandle) -> Result<String, String> {
-    if AUDIO_RUNNING
-        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
-        .is_err()
-    {
-        // Stop the previous helper first.
-        AUDIO_STOP.store(true, Ordering::SeqCst);
-        signal_speech_helper();
-        std::thread::sleep(std::time::Duration::from_millis(300));
-        AUDIO_RUNNING.store(true, Ordering::SeqCst);
+async fn start_speech(app: tauri::AppHandle) -> Result<String, String> {
+    // Do not reset the shared stop signal while an older worker owns it.
+    if AUDIO_RUNNING.load(Ordering::SeqCst) && AUDIO_STOP.load(Ordering::SeqCst) {
+        tauri::async_runtime::spawn_blocking(wait_for_speech_stop)
+            .await
+            .map_err(|e| e.to_string())??;
     }
+    AUDIO_RUNNING
+        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+        .map_err(|_| "The microphone is already running.".to_string())?;
     AUDIO_STOP.store(false, Ordering::SeqCst);
     OTHER_SPEAKING.store(false, Ordering::SeqCst);
     let stop = Arc::clone(&AUDIO_STOP);
@@ -694,13 +756,20 @@ fn start_speech(app: tauri::AppHandle) -> Result<String, String> {
             }
         };
         SPEECH_PID.store(child.id(), Ordering::SeqCst);
+        if stop.load(Ordering::SeqCst) {
+            // Stop may have arrived between claiming AUDIO_RUNNING and spawn.
+            signal_speech_helper();
+        }
 
         // Surface helper errors instead of failing silently (a denied
         // microphone / speech permission used to just leave the prompter idle).
         if let Some(stderr) = child.stderr.take() {
             let app_err = app.clone();
             std::thread::spawn(move || {
-                for line in std::io::BufReader::new(stderr).lines().map_while(Result::ok) {
+                for line in std::io::BufReader::new(stderr)
+                    .lines()
+                    .map_while(Result::ok)
+                {
                     eprintln!("[linecheck] helper: {line}");
                     let Ok(v) = serde_json::from_str::<serde_json::Value>(&line) else {
                         continue;
@@ -729,7 +798,9 @@ fn start_speech(app: tauri::AppHandle) -> Result<String, String> {
                     if let Some(msg) = user_msg {
                         // Call-audio problems are non-fatal: voice tracking
                         // carries on, so don't trigger the timer fallback.
-                        let event = if err.starts_with("screen_capture") || err.starts_with("system_audio") {
+                        let event = if err.starts_with("screen_capture")
+                            || err.starts_with("system_audio")
+                        {
                             "speech-warning"
                         } else {
                             "speech-error"
@@ -743,10 +814,23 @@ fn start_speech(app: tauri::AppHandle) -> Result<String, String> {
         let stdout = child.stdout.take().unwrap();
         let reader = std::io::BufReader::new(stdout);
 
-        for line in reader.lines() {
+        let (line_tx, line_rx) = std::sync::mpsc::sync_channel(64);
+        let stdout_reader = std::thread::spawn(move || {
+            for line in reader.lines() {
+                if line_tx.send(line).is_err() {
+                    break;
+                }
+            }
+        });
+        loop {
             if stop.load(Ordering::Relaxed) {
                 break;
             }
+            let line = match line_rx.recv_timeout(std::time::Duration::from_millis(50)) {
+                Ok(line) => line,
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue,
+                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
+            };
             let Ok(line) = line else { continue };
             let Ok(val) = serde_json::from_str::<serde_json::Value>(&line) else {
                 continue;
@@ -778,8 +862,6 @@ fn start_speech(app: tauri::AppHandle) -> Result<String, String> {
                 continue;
             };
             let is_final = val.get("final").and_then(|f| f.as_bool()).unwrap_or(false);
-            let preview: String = text.chars().take(100).collect();
-            eprintln!("[linecheck] Speech: {preview}");
 
             #[derive(Clone, Serialize)]
             struct SpeechEvent {
@@ -845,6 +927,8 @@ fn start_speech(app: tauri::AppHandle) -> Result<String, String> {
             }
         }
 
+        drop(line_rx);
+        let stopped_by_user = stop.load(Ordering::SeqCst);
         // Clean up: ask nicely (SIGTERM closes the recording), then insist.
         signal_speech_helper();
         let deadline = Instant::now() + std::time::Duration::from_secs(3);
@@ -859,10 +943,14 @@ fn start_speech(app: tauri::AppHandle) -> Result<String, String> {
                 _ => std::thread::sleep(std::time::Duration::from_millis(50)),
             }
         }
+        let _ = stdout_reader.join();
         SPEECH_PID.store(0, Ordering::SeqCst);
         OTHER_SPEAKING.store(false, Ordering::SeqCst);
         AUDIO_RUNNING.store(false, Ordering::Relaxed);
         eprintln!("[linecheck] Speech recognizer stopped");
+        if !stopped_by_user {
+            let _ = app.emit("speech-error", "Speech recognition stopped. Timer mode is available; this session may have incomplete speech evidence.");
+        }
     });
 
     Ok("started".into())
@@ -870,11 +958,23 @@ fn start_speech(app: tauri::AppHandle) -> Result<String, String> {
 
 /// Stop speech recognition.
 #[tauri::command]
-fn stop_speech() -> Result<(), String> {
+async fn stop_speech() -> Result<(), String> {
     AUDIO_STOP.store(true, Ordering::SeqCst);
-    // Signal the helper directly: the reader loop only checks the stop flag
-    // when a line arrives, which may be never if the room has gone quiet.
+    // Resolves only once the worker has closed/reaped the helper and recording.
     signal_speech_helper();
+    tauri::async_runtime::spawn_blocking(wait_for_speech_stop)
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+fn wait_for_speech_stop() -> Result<(), String> {
+    let deadline = Instant::now() + std::time::Duration::from_secs(5);
+    while AUDIO_RUNNING.load(Ordering::SeqCst) {
+        if Instant::now() >= deadline {
+            return Err("The microphone is still stopping. Please try again in a moment.".into());
+        }
+        std::thread::sleep(std::time::Duration::from_millis(25));
+    }
     Ok(())
 }
 
@@ -955,6 +1055,9 @@ struct Settings {
     /// & System Audio Recording permission).
     #[serde(default)]
     detect_other_party: bool,
+    /// Save script and recognized speech for local debugging only (opt-in).
+    #[serde(default)]
+    record_diagnostics: bool,
     /// Where the line being read sits, as a fraction of the prompter height.
     /// Near the top keeps the reader's eyes close to the camera.
     #[serde(default = "default_eye_line")]
@@ -1020,7 +1123,7 @@ fn save_settings(settings: Settings) -> Result<(), String> {
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
     let json = serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?;
-    fs::write(&path, json).map_err(|e| e.to_string())?;
+    write_private(&path, &json).map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -1269,7 +1372,13 @@ fn apply_screen_share(app: &tauri::AppHandle, hidden: bool) {
     for (_, win) in app.webview_windows() {
         let _ = win.set_content_protected(hidden);
     }
-    if let Some(item) = app.state::<ScreenShareItem>().0.lock().ok().and_then(|g| g.clone()) {
+    if let Some(item) = app
+        .state::<ScreenShareItem>()
+        .0
+        .lock()
+        .ok()
+        .and_then(|g| g.clone())
+    {
         let _ = item.set_text(screen_share_label(hidden));
     }
     let mut s = load_settings();
@@ -1332,7 +1441,7 @@ async fn install_update(
     if in_session || AUDIO_RUNNING.load(Ordering::SeqCst) {
         return Err("Finish the session first.".into());
     }
-    if VERIFYING.load(Ordering::SeqCst) {
+    if VERIFYING.load(Ordering::SeqCst) != 0 {
         return Err("Still checking the last session's recording; try again in a moment.".into());
     }
     let update = app
@@ -1378,7 +1487,10 @@ fn transcribe_file_mode() -> Option<i32> {
             o.status.code().unwrap_or(1)
         }
         Err(e) => {
-            let _ = fs::write(&out, format!("{{\"error\":\"could not run helper: {e}\"}}\n"));
+            let _ = fs::write(
+                &out,
+                format!("{{\"error\":\"could not run helper: {e}\"}}\n"),
+            );
             1
         }
     };

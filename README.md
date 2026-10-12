@@ -40,13 +40,16 @@ Allow microphone and speech recognition access when the first session starts. No
 2. Put the reading line just under your camera (`[` `]`) and set the column width (`,` `.`).
 3. Press **Start Session** (or Space) and start talking. Linecheck holds the line you're reading at the reading line.
 4. It waits at `PAUSE` points. At `BRANCH` points it follows whichever answer you start reading, or you can click one.
-5. Click **End**. You get a compliance report and coaching notes, re-checked against the full recording.
+5. Click **End**. You get a compliance report and coaching notes, re-checked against the full recording. The report distinguishes live tracking, a check in progress, a completed recording check, and a failed check.
+
+**Pause** freezes the prompter; the microphone continues listening and recording. **End** stops the microphone and closes the recording before reporting. Timer mode is labeled explicitly and scrolling alone never counts as speech evidence.
 
 ## Private by design
 
 - Speech recognition runs on your Mac with Apple's on-device recognizer. Audio never leaves the machine.
 - The session recording is used once, for the post-session check, then deleted (unless you choose to keep it).
-- Reports and transcripts are written as `0600` files in `~/meetings/consults/`.
+- Reports and transcripts are created privately (`0600`) in `~/meetings/consults/` and replaced atomically. New report and session directories use `0700` permissions.
+- Saving the raw script and recognized speech for diagnostic replay is **off by default**. Enable **Save diagnostic replay** in Session options only when debugging; that local file remains until you delete it. Previously saved replay files are not automatically deleted.
 - The window is hidden from screenshots and screen sharing by default. Toggle it in Session options (`H`) or from the menu-bar icon.
 
 ## Script format
@@ -90,7 +93,9 @@ Linecheck writes a Markdown report to `~/meetings/consults/`:
 - Lines not delivered, restarts, and off-script stretches
 - Coaching insights on pacing, coverage, pause discipline, and section balance (computed from the session data, no LLM)
 
-Live tracking can miss things, so after you end the session Linecheck re-transcribes the whole recording, aligns it against the script again, and rewrites the report from that pass.
+Live tracking can miss things, so after you end the session Linecheck re-transcribes the whole recording, aligns it against the script again, and rewrites the report from that pass. If recognition fails, times out, or exceeds the alignment resource limits, the live report stays intact and the failed check is shown explicitly.
+
+Coverage is an estimate of script delivery, not a determination of clinical, legal, or regulatory compliance. A covered section has at least one matched main-line sentence; it does not mean every line was delivered. Adherence counts the words in covered sentences, so it is a sentence-level estimate rather than a verbatim count of matched spoken words. Optional branch words are not included in the main-line adherence denominator. The live transcript contains recognition snapshots, while a successful recording check saves a separate full-recording transcript.
 
 ## How the tracking works
 
@@ -128,8 +133,14 @@ Requires Rust, the Tauri CLI (`cargo install tauri-cli`), and the Xcode command 
 # Build the app (Swift helper + Tauri bundle), and optionally install it
 ./scripts/build.sh --install
 
-# Run the tests (the core crate also builds and tests on Linux)
-cargo test
+# Run pure-core tests on any platform
+cargo test -p prompter-core --all-targets --locked
+
+# UI regressions (Node 18+, no npm dependencies)
+node --test crates/app/ui/*.test.cjs
+
+# Native app integration tests (macOS, after building the Swift helper)
+cargo test -p prompter-app --locked
 ```
 
 ```
@@ -162,6 +173,10 @@ Other tools can hand scripts to Linecheck three ways:
 - **Clipboard:** copy Markdown anywhere, then Cmd+V in Linecheck.
 
 See [INTEGRATION.md](INTEGRATION.md).
+
+## Engineering direction
+
+See [the engineering assessment](docs/ENGINEERING-REVIEW.md) for this upgrade's scope, remaining limits, and the next steps toward a measured, evidence-based tracking engine.
 
 ## Related
 

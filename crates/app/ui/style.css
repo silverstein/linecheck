@@ -24,6 +24,9 @@
     --radius-sm: 6px;
   }
   *{margin:0;padding:0;box-sizing:border-box}
+  :focus-visible{outline:2px solid var(--blue);outline-offset:3px}
+  button:disabled{cursor:wait;opacity:.55}
+  input:disabled{opacity:.45}
   body{
     font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text',system-ui,sans-serif;
     background:var(--bg); color:var(--text); height:100vh;
@@ -51,6 +54,9 @@
   .nav button:hover{color:var(--text-secondary);border-color:var(--border)}
   .nav button.active{background:var(--green-dim);border-color:rgba(34,197,94,.3);color:var(--green)}
   .nav button.done{color:var(--green);opacity:.45}
+  .script-summary{display:none;padding:10px 24px;font-size:12px;line-height:1.5;color:var(--text-secondary);border-bottom:1px solid var(--border-subtle)}
+  .script-summary.show{display:block}
+  body.in-session .script-summary{display:none}
 
   /* ── Teleprompter ── */
   /* scroll-behavior:auto -- the JS rAF lerp provides smoothness; CSS smooth
@@ -122,7 +128,7 @@
     border-left:3px solid var(--blue);border-radius:0 var(--radius) var(--radius) 0
   }
   .branch-q{font-size:14px;color:var(--blue);margin-bottom:12px;font-weight:500}
-  .branch-opts{display:flex;gap:8px}
+  .branch-opts{display:flex;gap:8px;flex-wrap:wrap}
   .branch-opt{
     flex:1;padding:10px 16px;background:var(--surface);border:1px solid var(--border);
     border-radius:var(--radius-sm);cursor:pointer;text-align:center;
@@ -156,13 +162,13 @@
   kbd{font-family:ui-monospace,monospace;font-size:.9em;padding:1px 5px;border-radius:3px;background:var(--surface);border:1px solid var(--border);color:var(--text-secondary)}
 
   /* ── Start bar ── */
-  .start-bar{display:none;align-items:center;justify-content:center;gap:14px;padding:14px 24px;border-top:1px solid var(--border-subtle);background:var(--surface);flex-shrink:0}
+  .start-bar{display:none;align-items:center;justify-content:center;gap:14px;padding:14px 24px;border-top:1px solid var(--border-subtle);background:var(--surface);flex-shrink:0;flex-wrap:wrap}
   .start-bar.show{display:flex}
 
   /* ── Status bar ── */
-  .status{display:none;align-items:center;justify-content:space-between;padding:8px 20px;border-top:1px solid var(--border-subtle);background:var(--surface);flex-shrink:0;font-size:12px;color:var(--text-muted)}
+  .status{display:none;align-items:center;justify-content:space-between;padding:8px 20px;border-top:1px solid var(--border-subtle);background:var(--surface);flex-shrink:0;font-size:12px;color:var(--text-secondary);gap:8px;flex-wrap:wrap}
   .status.show{display:flex}
-  .status-l{display:flex;align-items:center;gap:10px}
+  .status-l{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0}
   .dot{width:7px;height:7px;border-radius:50%;background:var(--text-muted);flex-shrink:0}
   .dot.go{background:var(--green);box-shadow:0 0 6px rgba(34,197,94,.4);animation:pulse 2s ease infinite}
   .dot.wait{background:var(--amber);animation:pulse 1.5s ease infinite}
@@ -173,6 +179,9 @@
   .mic-fill{width:100%;background:var(--green);border-radius:2px;transition:height 80ms ease}
   .audio-viz{display:flex;align-items:flex-end;gap:1px;height:22px}
   .audio-viz .bar{width:3px;background:var(--green);border-radius:1px;transition:height 80ms ease;min-height:2px}
+  .audio-viz.active .bar{height:12px}
+  .audio-viz.active .bar:nth-child(2n){height:20px}
+  .audio-viz.active .bar:nth-child(3n){height:7px}
   .progress-bar{width:120px;height:3px;background:var(--border);border-radius:2px;overflow:hidden}
   .progress-fill{height:100%;background:var(--green);border-radius:2px;transition:width .5s ease}
   .status-r{display:flex;align-items:center;gap:6px}
@@ -181,8 +190,8 @@
     padding:2px 10px;border-radius:4px;font-size:11px;cursor:pointer;transition:all .12s
   }
   .status-r button:hover{border-color:var(--text-secondary);color:var(--text-secondary)}
-  .end-btn,.end-sep{display:none}
-  body.in-session .end-btn,body.in-session .end-sep{display:inline-block}
+  .end-btn,.end-sep,.session-control{display:none}
+  body.in-session .end-btn,body.in-session .end-sep,body.in-session .session-control{display:inline-block}
   .status-r button.end-btn.ready{background:var(--green-dim);border-color:rgba(34,197,94,.5);color:var(--green)}
   .speed-group{display:flex;align-items:center;gap:4px}
   .speed-group input[type=range]{width:64px;accent-color:var(--green);height:3px}
@@ -193,7 +202,7 @@
   /* ── Completion ── */
   .overlay{position:fixed;inset:0;background:rgba(0,0,0,.88);display:none;align-items:center;justify-content:center;z-index:50}
   .overlay.show{display:flex}
-  .card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:36px;max-width:420px;width:90%;text-align:center}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:28px;max-width:560px;width:90%;max-height:90vh;overflow-y:auto;text-align:center}
   .card h2{font-size:24px;margin-bottom:4px;font-weight:600}
   .card .sub{color:var(--text-muted);font-size:14px;margin-bottom:28px}
   .card-rows{text-align:left;margin-bottom:24px}
@@ -202,12 +211,25 @@
   .card-row .ck{font-size:16px;width:20px;text-align:center}
   .card-row .nm{flex:1;color:var(--text-secondary)}
   .card-row .tm{font-variant-numeric:tabular-nums;font-size:12px;color:var(--text-muted)}
+  .report-source{display:inline-block;padding:5px 10px;border:1px solid var(--border);border-radius:16px;color:var(--text-secondary);font-size:12px;font-weight:600}
+  .report-source[data-state="verified"]{color:var(--green);background:var(--green-dim)}
+  .report-source[data-state="checking"],.report-source[data-state="failed"]{color:var(--amber);background:var(--amber-dim)}
+  .report-note{font-size:13px;line-height:1.6;color:var(--text-secondary);margin:12px 0 18px}
+  .report-path{font-size:11px;line-height:1.6;color:var(--text-muted);margin:12px 0;overflow-wrap:anywhere;user-select:text;-webkit-user-select:text}
+  .coach{text-align:left;margin-bottom:18px;padding:12px;background:var(--bg);border-radius:var(--radius-sm);border:1px solid var(--border-subtle)}
+  .coach h3{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--text-muted);margin-bottom:8px}
+  .coaching-insight{font-size:13px;line-height:1.5;padding:6px 0;color:var(--text-secondary)}
+  .coaching-severity{font-weight:600;text-transform:capitalize}
+  .coaching-advice{font-size:12px;color:var(--text-muted);margin-top:3px}
 
   /* ── Help ── */
   .help{position:fixed;inset:0;background:rgba(0,0,0,.82);display:none;align-items:center;justify-content:center;z-index:60}
   .help.show{display:flex}
   .help-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:28px;max-width:440px;width:90%;max-height:92vh;overflow-y:auto}
   .help-card h3{margin-bottom:18px;font-size:15px;font-weight:600}
+  .dialog-heading{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:24px}
+  .dialog-heading h2{font-size:18px}
+  .dialog-heading button{padding:6px 10px;font-size:12px}
   .help-card table{width:100%;font-size:13px;border-spacing:0}
   .help-card td{padding:5px 0;color:var(--text-secondary)}
   .help-card .opt{display:grid;grid-template-columns:16px 1fr;gap:2px 8px;align-items:baseline;font-size:13px;color:var(--text-secondary);padding:5px 0;cursor:pointer}
@@ -221,7 +243,7 @@
   .recent-item{
     display:flex;align-items:center;gap:10px;padding:8px 12px;
     border-radius:var(--radius-sm);cursor:pointer;transition:background .12s;
-    border:1px solid transparent
+    border:1px solid transparent;width:100%;background:none;text-align:left;font:inherit
   }
   .recent-item:hover{background:var(--surface);border-color:var(--border)}
   .recent-item .r-icon{font-size:14px;opacity:.4}
@@ -237,7 +259,7 @@
 body.in-session .titlebar{position:absolute;top:0;left:0;right:0;z-index:20}
 body.in-session .nav{position:absolute;top:var(--title-bar-h);left:0;right:0;z-index:20;
   background:var(--bg);opacity:0;transition:opacity .2s}
-body.in-session .nav:hover{opacity:1}
+body.in-session .nav:hover,body.in-session .nav:focus-within{opacity:1}
 
 /* ── Narrow column, centered (under the camera): less side-to-side eye travel. ── */
 .tp > .sec-head,.tp > .text-block,.tp > .pause,.tp > .branch{
@@ -258,3 +280,6 @@ body.in-session .nav:hover{opacity:1}
 .update-bar .btn-ghost{padding:4px 10px;font-size:12px}
 body.in-session .update-bar{display:none}
 
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}
+}
